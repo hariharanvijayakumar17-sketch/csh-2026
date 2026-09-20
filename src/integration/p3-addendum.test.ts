@@ -216,10 +216,28 @@ describe("item 4: round criteria weights must sum to exactly 100 at activation",
 });
 
 describe("item 5: production guard DB checks (trust auth, demo seed, refusal)", () => {
-  it("detects trust/no-password DB auth via empty-password probe (sandbox IS trust → detected)", async () => {
+  it("F9: probe verdict mapping is environment-independent (injected probe)", async () => {
+    // The test DB may run trust (sandbox) OR SCRAM (a properly configured
+    // Postgres) — the suite must not assume which. The GUARD's behaviour for
+    // each probe outcome is what we assert, with an injected probe.
+    const accepted = await checkDbAuth(TEST_URL, async () => "accepted");
+    expect(accepted.ok).toBe(false);
+    expect(accepted.failures.join(" ")).toMatch(/trust|no-password/i);
+    const rejected = await checkDbAuth(TEST_URL, async () => "rejected");
+    expect(rejected.ok).toBe(true);
+    expect(rejected.failures).toEqual([]);
+    const unreachable = await checkDbAuth(TEST_URL, async () => "unreachable");
+    expect(unreachable.ok).toBe(true);
+    expect(unreachable.warnings.length).toBeGreaterThan(0);
+  });
+
+  it("F9: the real probe runs against the test DB without throwing (any auth mode)", async () => {
+    // env-agnostic smoke: whatever the test Postgres is configured with,
+    // the real network probe returns a well-formed report and never throws
     const r = await checkDbAuth(TEST_URL);
-    expect(r.ok).toBe(false);
-    expect(r.failures.join(" ")).toMatch(/trust|no-password|password/i);
+    expect(typeof r.ok).toBe("boolean");
+    expect(Array.isArray(r.failures)).toBe(true);
+    expect(Array.isArray(r.warnings)).toBe(true);
   });
 
   it("probe failure path: unreachable server → no evidence of trust (probe fails cleanly)", async () => {

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  checkDbAuth,
   checkEnv,
+  classifyProbeError,
+  runProductionGuard,
   KNOWN_DEFAULT_SESSION_SECRETS,
   KNOWN_DEFAULT_DB_PASSWORDS,
 } from "..";
@@ -98,5 +101,45 @@ describe("production guard: env checks (P3 addendum 5)", () => {
     const r = checkEnv(envWith({}));
     expect(r.ok).toBe(true);
     expect(r.failures).toEqual([]);
+  });
+});
+
+
+describe("F9: empty-password probe is injectable; verdict mapping is pure", () => {
+  it("accepted ⇒ fail-closed (trust/no-password auth detected)", async () => {
+    const r = await checkDbAuth("postgres://u:***@db.internal:5432/x", async () => "accepted");
+    expect(r.ok).toBe(false);
+    expect(r.failures.join(" ")).toMatch(/no password|trust/i);
+  });
+
+  it("rejected ⇒ password auth enforced ⇒ ok", async () => {
+    const r = await checkDbAuth("postgres://u:***@db.internal:5432/x", async () => "rejected");
+    expect(r.ok).toBe(true);
+    expect(r.failures).toEqual([]);
+  });
+
+  it("unreachable ⇒ no evidence of trust ⇒ ok, with a warning", async () => {
+    const r = await checkDbAuth("postgres://u:***@db.internal:5432/x", async () => "unreachable");
+    expect(r.ok).toBe(true);
+    expect(r.warnings.join(" ")).toMatch(/unverified|reach/i);
+  });
+
+  it("classifies auth-rejection vs unreachable errors", () => {
+    expect(classifyProbeError(new Error('password authentication failed for user "csh_app"'))).toBe("rejected");
+    expect(classifyProbeError(new Error('FATAL:  no pg_hba.conf entry for host "1.2.3.4"'))).toBe("rejected");
+    expect(classifyProbeError(new Error("connect ECONNREFUSED 1.2.3.4:5432"))).toBe("unreachable");
+  });
+
+  it("runProductionGuard (production env, injected probe): accepted ⇒ throws; rejected ⇒ passes the DB gate", async () => {
+    const env = {
+      NODE_ENV: "production",
+      DATABASE_URL: "postgres://csh_app:S3cure-Random-Value-9f2a7c@db.internal:5432/csh2026",
+      SESSION_SECRET: "0123456789abcdef0123456789abcdef01234567",
+    };
+    await expect(runProductionGuard({ env, probe: async () => "accepted" })).rejects.toThrow(/no password/i);
+    // with a rejecting probe the DB gate passes; the demo-seed check needs a
+    // live DB, so assert via checkDbAuth directly instead of a full run
+    const r = await checkDbAuth(env.DATABASE_URL, async () => "rejected");
+    expect(r.ok).toBe(true);
   });
 });

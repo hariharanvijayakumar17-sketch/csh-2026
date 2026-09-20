@@ -80,22 +80,61 @@ export function checkEnv(env: Record<string, string | undefined>): {
 }
 
 /**
- * Detect trust/no-password DB auth: attempt a real connection with an EMPTY
- * password. Success ⇒ the server grants access without a password ⇒ refuse
- * in production. A normal SCRAM server rejects the probe (expected).
+ * F9: the empty-password probe is DEPENDENCY-INJECTED. The verdict mapping
+ * (accepted ⇒ fail-closed; rejected/unreachable ⇒ no evidence of trust) is
+ * pure and unit-tested; the real network probe is a thin adapter. This keeps
+ * every guard test environment-independent: a properly-configured SCRAM
+ * test database must not make the suite fail.
  */
-export async function checkDbAuth(databaseUrl: string | undefined): Promise<GuardReport> {
+export type EmptyPasswordProbeResult = "accepted" | "rejected" | "unreachable";
+export type EmptyPasswordProbe = () => Promise<EmptyPasswordProbeResult>;
+
+/** Classify a probe error: auth rejection vs server unreachable. */
+export function classifyProbeError(err: unknown): Exclude<EmptyPasswordProbeResult, "accepted"> {
+  const msg = (err instanceof Error ? `${err.message} ${String((err as { hint?: string }).hint ?? "")}` : String(err)).toLowerCase();
+  if (/(password|auth|trust|pg_hba|no pg_hba\.conf entry|reject)/.test(msg)) return "rejected";
+  return "unreachable";
+}
+
+/** The real network probe: connect with an EMPTY password, classify the outcome. */
+export function makeEmptyPasswordProbe(databaseUrl: string): EmptyPasswordProbe {
+  return async () => {
+    let u: URL;
+    try {
+      u = new URL(databaseUrl);
+    } catch {
+      return "unreachable";
+    }
+    u.password = "";
+    const client = postgres(u.toString(), { max: 1, connect_timeout: 3 });
+    try {
+      await client`select 1`;
+      return "accepted";
+    } catch (err) {
+      return classifyProbeError(err);
+    } finally {
+      await client.end();
+    }
+  };
+}
+
+/**
+ * Detect trust/no-password DB auth. `probe` is injectable for tests; the
+ * default is the real empty-password network probe.
+ */
+export async function checkDbAuth(
+  databaseUrl: string | undefined,
+  probe?: EmptyPasswordProbe
+): Promise<GuardReport> {
   if (!databaseUrl) return { ok: true, failures: [], warnings: [] };
-  let u: URL;
   try {
-    u = new URL(databaseUrl);
+    new URL(databaseUrl);
   } catch {
     return { ok: false, failures: ["cannot parse DATABASE_URL for auth probe"], warnings: [] };
   }
-  u.password = "";
-  const probe = postgres(u.toString(), { max: 1, connect_timeout: 3 });
-  try {
-    await probe`select 1`;
+  const run = probe ?? makeEmptyPasswordProbe(databaseUrl);
+  const result = await run();
+  if (result === "accepted") {
     return {
       ok: false,
       failures: [
@@ -103,12 +142,16 @@ export async function checkDbAuth(databaseUrl: string | undefined): Promise<Guar
       ],
       warnings: [],
     };
-  } catch {
-    // probe rejected → password auth is enforced
-    return { ok: true, failures: [], warnings: [] };
-  } finally {
-    await probe.end();
   }
+  if (result === "unreachable") {
+    return {
+      ok: true,
+      failures: [],
+      warnings: ["auth probe could not reach the database — trust status unverified (startup will fail on connect anyway)"],
+    };
+  }
+  // rejected → password auth is enforced
+  return { ok: true, failures: [], warnings: [] };
 }
 
 /** Demo seed marker check (runs against the live DB). */
@@ -139,6 +182,8 @@ export interface GuardOptions {
   env?: Record<string, string | undefined>;
   /** run the empty-password DB auth probe (default: only in production) */
   checkDb?: boolean;
+  /** F9: inject the auth probe (tests); default = real network probe */
+  probe?: EmptyPasswordProbe;
 }
 
 export async function runProductionGuard(opts: GuardOptions = {}): Promise<GuardReport> {
@@ -149,7 +194,7 @@ export async function runProductionGuard(opts: GuardOptions = {}): Promise<Guard
   report.failures.push(...checkEnv(env).failures);
 
   if (isProd || opts.checkDb) {
-    const dbReport = await checkDbAuth(env.DATABASE_URL);
+    const dbReport = await checkDbAuth(env.DATABASE_URL, opts.probe);
     (isProd ? report.failures : report.warnings).push(...dbReport.failures);
     if (isProd) {
       const seedReport = await checkDemoSeed();
