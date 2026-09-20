@@ -1,0 +1,11 @@
+$ npm run test:e2e (smoke, desktop+mobile)
+
+Running 2 tests using 1 worker
+
+[WebServer]  ⚠ Cross origin request detected from 127.0.0.1 to /_next/* resource. In a future major version of Next.js, you will need to explicitly configure "allowedDevOrigins" in next.config to allow this.
+[WebServer] Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+  ✓  1 [desktop] › e2e/smoke.spec.ts:3:5 › P0 tooling smoke: app boots and serves a page (1.5s)
+  ✓  2 [mobile] › e2e/smoke.spec.ts:3:5 › P0 tooling smoke: app boots and serves a page (740ms)
+
+  2 passed (13.0s)
+E2E_EXIT=0

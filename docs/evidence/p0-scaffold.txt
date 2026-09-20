@@ -1,0 +1,10 @@
+# P0 — Project scaffold (2026-09-20)
+
+$ cd /home/user && npx --yes create-next-app@15 csh-2026 --typescript --eslint --app \
+    --src-dir --tailwind --import-alias "@/*" --use-npm --yes
+CNA_EXIT=0
+"Success! Created csh-2026 at /home/user/csh-2026"
+"Initialized a git repository."
+Warning (recorded, non-blocking): npm audit reports "2 vulnerabilities (1 moderate, 1 high)"
+from create-next-app's initial dependency tree. Will re-check `npm audit` after final
+dependency set and document/patch. UNVERIFIED whether the advisory affects the runtime.

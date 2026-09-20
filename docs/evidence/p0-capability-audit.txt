@@ -1,0 +1,44 @@
+# P0 — Capability audit (2026-09-20, Asia/Calcutta)
+Commands run in Arena sandbox (/home/user). Exit codes as shown.
+
+## Terminal / filesystem
+$ whoami && pwd && echo ok > /home/user/.audit_test && cat /home/user/.audit_test
+user /home/user / ok           # exit 0
+WRITES: OK (test file created and removed)
+
+## Package installation
+node -v  -> v20.20.2
+npm -v   -> 10.8.2
+python3  -> Python 3.13.14
+$ sudo apt-get update -qq && sudo apt-get install -y postgresql postgresql-contrib
+APT_EXIT=0  -> psql (PostgreSQL) 17.11 (Debian 17.11-0+deb13u1)
+
+## Network
+$ curl -sS -o /dev/null -w "%{http_code}" https://registry.npmjs.org/
+200
+$ timeout 15 git ls-remote https://github.com/facebook/react.git HEAD
+59aff3e18cb5b3a336c280bbfa57ec37999511b	HEAD   (anonymous read OK, exit 0)
+
+## Web search
+Tool available (web_search). OK.
+
+## Postgres
+NOT preinstalled. INSTALLED via apt (sudo available): PostgreSQL 17.11.
+$ sudo service postgresql start  (service start)
+$ sudo -u postgres psql -c "SELECT version();"
+PostgreSQL 17.11 ... on x86_64-pc-linux-gnu   # exit 0
+Databases created: csh2026_dev, csh2026_test (owner csh_dev).
+
+## Playwright
+NOT preinstalled (npx --no-install playwright -> missing). Install planned: npm i -D playwright + npx playwright install --with-deps chromium.
+
+## GitHub (BLOCKER)
+- git 2.47.3 present; gh CLI: NOT installed.
+- Environment variables: only E2B_* sandbox vars. No GITHUB_TOKEN / GH_TOKEN.
+- No ~/.netrc, no ~/.git-credentials, no ~/.config/gh.
+- No GitHub connector tool available in this session.
+CONCLUSION: anonymous read of github.com works, but CREATING repo / PUSHING is IMPOSSIBLE
+without credentials. Human gate request sent to user (deployment key or token via
+platform env — user must NOT paste secrets into chat).
+Generated locally for that purpose: ed25519 keypair at /home/user/.ssh/id_ed25519
+(public key surfaced to user — public key is non-secret).
