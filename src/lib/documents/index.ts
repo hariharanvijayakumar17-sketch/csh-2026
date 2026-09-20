@@ -6,8 +6,6 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import {
   documents,
-  evaluations,
-  mentorships,
   proposals,
   teamMembers,
   teams,
