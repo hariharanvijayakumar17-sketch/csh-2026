@@ -56,8 +56,31 @@ _Last updated: 2026-09-20 (IST)_
 
 Git: origin/main — see `git log` (P5 commit next).
 
+## P5 external audit — ALL 11 ITEMS FIXED & PUSHED (2026-09-20)
+
+Reviewer defects F1–F11 + probe file src/integration/audit-probe.test.ts
+(added unmodified, acceptance contract for F1–F6). RED evidence:
+docs/evidence/p5-audit-red.txt; GREEN: docs/evidence/p5-audit-green.txt.
+One commit per item, pushed after each:
+
+| Item | Fix | Commit |
+|---|---|---|
+| F1 | invited ≠ member (ACCEPTED rows only); /teams/:id/decline; stale invites auto-decline; 0003 declined status | cf8fa16 |
+| F2 | document.upload = own team; SPOC letter via dedicated route + upload_letter | b1db3c8 |
+| F3 | server-side content detection (zip central-dir parse; RFC 5987 header) | ee9e17d |
+| F4 | fail-closed assignment sets (per-role === true), both sets populated | 45d7bbd, a2d8af8 |
+| F5 | proposalReview = problem-statement creator or own-inst SPOC | e8eb5a7 |
+| F6 | upload state/deadline gates (LOCKED / DEADLINE_PASSED); admin override audited | 2f600cf, 09663b3 |
+| F7 | fail-closed SPOC portal perms; announcementUpdate = author/own-inst SPOC | b468059 |
+| F8 | no runtime artifacts in git (data/ untracked; repo-hygiene unit test) | 1a788a6 |
+| F9 | trust probe DI (accepted/rejected/unreachable); env-independent tests | 8146ad6 |
+| F10 | URL UUID params validated before auth (400; 200-with-error hack removed); /teams/mine 403 fix | db5d302 |
+| F11 | SECURITY.md = verified claims only + known gaps; DECISIONS D24 | 0ce6839 |
+
+Final state (real output in evidence file): unit 82/82, integration 79/79
+(includes audit-probe 7/7), typecheck clean, lint 0.
+
 ## NEXT ACTION:
-STOP after P5 (user instruction). When told to continue: P6 — creator/SPOC
-portals (problems create/edit/clarify flow, SPOC team verify/shortlist,
-mentor feedback) + the remaining registry surfaces + UI pages for
-team/proposal/document flows.
+STOP — waiting for user. P6 (creator/SPOC portals, verify/shortlist,
+mentor feedback, remaining registry surfaces, team/proposal/document UI
+pages) does NOT start until the user says continue.

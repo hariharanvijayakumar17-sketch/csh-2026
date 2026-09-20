@@ -1,0 +1,32 @@
+==============================================================
+P5 AUDIT — GREEN EVIDENCE (all 11 items F1-F11 fixed)
+captured 2026-09-20 16:55 IST, HEAD = 0ce6839, real output
+==============================================================
+
+--- 1) reviewer probe file (acceptance tests, unmodified) ---
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m7 passed[39m[22m[90m (7)[39m
+[2m   Start at [22m 16:55:29
+[2m   Duration [22m 1.22s[2m (transform 229ms, setup 23ms, import 340ms, tests 722ms, environment 0ms)[22m
+
+
+--- 2) F10 live-server verification (next dev, real HTTP) ---
+session: POST /api/v1/auth/login (demo leader, origin header) -> 200
+GET /api/v1/teams/not-a-uuid/documents +session -> {"success":false,"error":{"code":"BAD_REQUEST","message":"Invalid UUID in URL parameter 'id'"},"requestId":"00b578c7-3664-45ae-b0ab-2b95ec9a8b66"} [400]
+GET /api/v1/teams/not-a-uuid (NO session)       -> {"success":false,"error":{"code":"BAD_REQUEST","message":"Invalid UUID in URL parameter 'id'"},"requestId":"4659b6c3-abbc-45f7-81ba-88b323776079"} [400]
+GET /api/v1/documents/not-a-uuid/download +sess -> {"success":false,"error":{"code":"BAD_REQUEST","message":"Invalid UUID in URL parameter 'id'"},"requestId":"9543a031-3207-48ff-9041-2cee0eb5e857"} [400]
+control GET /api/v1/teams/mine +session         -> {"success":true,"data":{"teams":[]},"requestId":"e3b74584-207c-4053-9f17-1bcd5a83bbe6"} [200]
+(pre-fix: documents route returned HTTP 200 with {error:'bad id'})
+
+--- 3) FULL SUITES (final) ---
+[2m      Tests [22m [1m[32m82 passed[39m[22m[90m (82)[39m
+[2m   Start at [22m 16:55:34
+[2m   Duration [22m 3.27s[2m (transform 290ms, setup 0ms, import 693ms, tests 759ms, environment 1ms)[22m
+
+[2m      Tests [22m [1m[32m79 passed[39m[22m[90m (79)[39m
+[2m   Start at [22m 16:55:38
+[2m   Duration [22m 11.68s[2m (transform 388ms, setup 53ms, import 1.28s, tests 9.31s, environment 1ms)[22m
+
+
+--- 4) typecheck + lint ---
+tsc: clean
