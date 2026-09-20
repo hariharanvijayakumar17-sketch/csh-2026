@@ -91,14 +91,25 @@ async function ownTeamIds(userId: string): Promise<Set<string>> {
   return new Set(rows.map((r) => r.teamId));
 }
 
-async function ctxFor(user: UserLike, teamId: string) {
+async function ctxFor(user: UserLike, teamId: string, problemId?: string | null) {
   const team = await loadTeam(teamId);
   const own = await ownTeamIds(user.id);
   // F4: both assignment sets populated — proposalView/feedback/check are
   // fail-closed per role
+  // F5: the proposal's problem + its creator feed proposalReview scoping
+  let creatorUserId: string | null = null;
+  if (problemId) {
+    const [ps] = await db
+      .select({ creatorUserId: problemStatements.creatorUserId })
+      .from(problemStatements)
+      .where(eq(problemStatements.id, problemId))
+      .limit(1);
+    creatorUserId = ps?.creatorUserId ?? null;
+  }
   return {
     team,
     ownTeamIds: own,
+    proposal: { teamId, problemId: problemId ?? null, creatorUserId },
     mentorAssignedTeamIds: user.role === "mentor" ? await mentorAssignedTeamIds(user.id) : undefined,
     evaluatorAssignedTeamIds: user.role === "evaluator" ? await evaluatorAssignedTeamIds(user.id) : undefined,
   };
@@ -136,7 +147,7 @@ function toVersion(r: typeof proposalVersions.$inferSelect): ProposalVersionDTO 
 
 export async function resolveProposalScope(user: UserLike, proposalId: string): Promise<CanContext> {
   const p = await loadProposalOr404(proposalId);
-  return ctxFor(user, p.teamId);
+  return ctxFor(user, p.teamId, p.problemId);
 }
 
 export async function createProposal(
@@ -146,7 +157,7 @@ export async function createProposal(
   const title = input.title.trim();
   if (!title || title.length > 200) throw new ApiError("BAD_REQUEST", "Title: 1–200 chars");
 
-  const ctx = await ctxFor(user, input.teamId);
+  const ctx = await ctxFor(user, input.teamId, input.problemId);
   if (!can(user, Permissions.proposalCreate, ctx)) {
     throw new ApiError("FORBIDDEN", "Only the team leader can create proposals");
   }
@@ -204,7 +215,7 @@ export async function updateProposalDraft(
   fields: DraftFields
 ): Promise<ProposalDTO> {
   const p = await loadProposalOr404(proposalId);
-  const ctx = await ctxFor(user, p.teamId);
+  const ctx = await ctxFor(user, p.teamId, p.problemId);
   if (!can(user, Permissions.proposalUpdate, ctx)) {
     throw new ApiError("FORBIDDEN", "Only the team leader can edit this proposal");
   }
@@ -263,7 +274,7 @@ export async function updateProposalDraft(
  */
 export async function submitProposal(user: UserLike, proposalId: string): Promise<ProposalDTO> {
   const p = await loadProposalOr404(proposalId);
-  const ctx = await ctxFor(user, p.teamId);
+  const ctx = await ctxFor(user, p.teamId, p.problemId);
   if (!can(user, Permissions.proposalSubmit, ctx)) {
     throw new ApiError("FORBIDDEN", "Only the team leader can submit this proposal");
   }
@@ -327,7 +338,7 @@ export async function submitProposal(user: UserLike, proposalId: string): Promis
 
 export async function getProposal(user: UserLike, proposalId: string): Promise<ProposalDTO> {
   const p = await loadProposalOr404(proposalId);
-  const ctx = await ctxFor(user, p.teamId);
+  const ctx = await ctxFor(user, p.teamId, p.problemId);
   if (!can(user, Permissions.proposalView, ctx)) {
     throw new ApiError("FORBIDDEN", "You do not have access to this proposal");
   }

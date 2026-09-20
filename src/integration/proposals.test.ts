@@ -1,11 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { sql } from "drizzle-orm";
+import { eq as equals, sql } from "drizzle-orm";
 import {
+  problemStatements,
   proposals,
   proposalVersions,
   rounds,
   teamMembers,
 } from "@/lib/db/schema";
+import { can, Permissions } from "@/lib/authz/permissions";
 import {
   createProposal,
   updateProposalDraft,
@@ -13,6 +15,7 @@ import {
   getProposal,
 } from "@/lib/proposals";
 import { createTeam, inviteMember, acceptInvite, setTeamProblems } from "@/lib/teams";
+import { resolveProposalScope } from "@/lib/proposals";
 import {
   bootDb,
   makeActiveRound,
@@ -232,4 +235,34 @@ describe("P5 proposals: lifecycle, S4 immutability, round window", () => {
     const after = await getProposal(leader, p.id);
     expect(after.status).toBe("submitted");
   });
+
+  it("F5: proposalReview = creator of the proposal's problem, or SPOC of the team's institution", async () => {
+    const { team, leader, inst, problem } = await seededTeam(["male", "female"]);
+    const roundId = await makeActiveRound(t.db);
+    const p = await createProposal(leader, { teamId: team.id, problemId: problem.id, roundId, title: "F5" });
+
+    const creatorOf = await makeUser(t.db, { prefix: "f5c1", role: "problem_creator" });
+    const otherCreator = await makeUser(t.db, { prefix: "f5c2", role: "problem_creator" });
+    const spocOwn = await makeUser(t.db, { prefix: "f5s1", role: "spoc", institutionId: inst });
+    const spocOther = await makeUser(t.db, { prefix: "f5s2", role: "spoc" });
+    const instB = await makeInstitution(t.db);
+    spocOther.institutionId = instB;
+
+    // the creator OF THIS PROBLEM'S PS can review
+    await t.db.update(problemStatements).set({ creatorUserId: creatorOf.id }).where(equals(problemStatements.id, problem.id));
+    let ctx = await resolveProposalScope(creatorOf, p.id);
+    expect(can(creatorOf, Permissions.proposalReview, ctx)).toBe(true);
+    // a different problem_creator cannot
+    ctx = await resolveProposalScope(otherCreator, p.id);
+    expect(can(otherCreator, Permissions.proposalReview, ctx)).toBe(false);
+    // SPOC of the team's institution can; other institution cannot
+    ctx = await resolveProposalScope(spocOwn, p.id);
+    expect(can(spocOwn, Permissions.proposalReview, ctx)).toBe(true);
+    ctx = await resolveProposalScope(spocOther, p.id);
+    expect(can(spocOther, Permissions.proposalReview, ctx)).toBe(false);
+    // a participant (team leader) cannot review
+    ctx = await resolveProposalScope(leader, p.id);
+    expect(can(leader, Permissions.proposalReview, ctx)).toBe(false);
+  });
+
 });

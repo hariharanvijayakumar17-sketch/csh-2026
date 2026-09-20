@@ -105,7 +105,7 @@ export interface CanContext {
     institutionId: string;
     leaderUserId: string;
   };
-  proposal?: { teamId: string };
+  proposal?: { teamId: string; problemId?: string | null; creatorUserId?: string | null };
   document?: { ownerKind: "team" | "proposal"; ownerId: string; teamId?: string; purpose?: string };
   problem?: { creatorUserId?: string | null };
   evaluation?: {
@@ -210,14 +210,24 @@ export function can(
       return ctx.ownTeamIds?.has(t.id) === true;
     }
 
-    case Permissions.proposalReview:
-      return (
-        (user.role === "spoc" || user.role === "problem_creator") &&
-        !!ctx.team &&
-        (user.role === "spoc"
-          ? ctx.team.institutionId === user.institutionId
-          : true)
-      );
+    case Permissions.proposalReview: {
+      const t = teamOfProposal(ctx);
+      if (!t) return false;
+      // F5: SPOC of the team's own institution, or the creator of the PROBLEM
+      // STATEMENT this proposal addresses. Other problem_creators: NO.
+      if (user.role === "spoc")
+        return !!user.institutionId && t.institutionId === user.institutionId;
+      if (user.role === "problem_creator") {
+        const p = ctx.proposal;
+        return (
+          !!p &&
+          p.problemId != null &&
+          p.creatorUserId != null &&
+          p.creatorUserId === user.id
+        );
+      }
+      return false;
+    }
 
     case Permissions.proposalLock:
       return false; // admin only (handled by super_admin early-return)

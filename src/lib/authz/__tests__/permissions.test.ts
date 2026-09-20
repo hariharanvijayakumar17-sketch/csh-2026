@@ -193,6 +193,28 @@ describe("S1 central authorisation: can(user, permission, ctx)", () => {
     expect(can(member, Permissions.documentView, foreignForSpocA)).toBe(false);
   });
 
+  it("F5: proposalReview — problem creator of THIS proposal's PS, or own-institution SPOC only", () => {
+    const teamAProposal = { teamId: "t-a", problemId: "ps-1", creatorUserId: "u-creator" };
+    expect(can(creator, Permissions.proposalReview, { team: teamA, proposal: teamAProposal })).toBe(true);
+    // a DIFFERENT problem creator: denied
+    const other: UserLike = { id: "u-creator-2", role: "problem_creator" };
+    expect(can(other, Permissions.proposalReview, { team: teamA, proposal: teamAProposal })).toBe(false);
+    // problem creator with NO proposal ctx: denied (fail-closed)
+    expect(can(creator, Permissions.proposalReview, { team: teamA })).toBe(false);
+    // PS without recorded creator: no one can claim it
+    expect(
+      can(creator, Permissions.proposalReview, { team: teamA, proposal: { teamId: "t-a", problemId: "ps-1", creatorUserId: null } })
+    ).toBe(false);
+    // SPOC: own institution only, fail-closed on missing institution
+    expect(can(spocA, Permissions.proposalReview, { team: teamA })).toBe(true);
+    expect(can(spocB, Permissions.proposalReview, { team: teamA })).toBe(false);
+    const spocNone: UserLike = { id: "u-spoc-none", role: "spoc", institutionId: null };
+    expect(can(spocNone, Permissions.proposalReview, { team: teamA })).toBe(false);
+    // other roles: denied
+    expect(can(leader, Permissions.proposalReview, { team: teamA, proposal: teamAProposal })).toBe(false);
+    expect(can(mentor, Permissions.proposalReview, { team: teamA, proposal: teamAProposal })).toBe(false);
+  });
+
   it("F4: role sets are checked per-role and fail closed — no ?? fall-through", () => {
     const ctx: CanContext = {
       team: teamA,
