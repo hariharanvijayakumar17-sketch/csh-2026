@@ -74,3 +74,30 @@ GET  /api/v1/teams/00000000-...-000000000000           → 404 NOT_FOUND
 - Demo seed now creates leader(male)/member(female)/spoc/mentor/evaluator/
   admin with genders and SPOC-institution fixed (needed for the min_female
   and SPOC-same-institution rules).
+
+## 5. Re-verification (2026-09-20, after task re-confirmation)
+Re-ran everything and spot-checked the P3-addendum code against the request:
+```
+$ npx vitest run                                 → 10 files / 54 tests PASS
+$ npx vitest run --config vitest.int.config.ts   → 7 files / 64 tests PASS
+$ npx tsc --noEmit                               → clean
+$ npm run lint                                   → 0 problems
+HEAD == origin/main == 9b9e682
+```
+P3-addendum code spot-check (all present, all tested):
+- (1) settings-driven limits: ratelimit.login.ip_per_min=60 (generous, campus
+  NAT) vs account_per_min=10 (strict); TRUSTED_PROXY_COUNT semantics +
+  wrong-value consequences documented in this file §2 / p3-addendum-checks §2.
+- (2) src/lib/auth/login.ts: progressive delay table login_delays keyed
+  (user_id, client_ip) — attacker IP slowed, legitimate IP unaffected,
+  success resets the pair (integration tests item 2).
+- (3) src/lib/auth/password.ts: SCRYPT_PARAMS = {N:16384, r:8, p:1, keyLen:64}
+  exported; DUMMY_HASH carries the same N/r/p (unit test parses it);
+  crypto.timingSafeEqual; 16 MiB/hash work area, 64 MiB worst case on the
+  4-thread libuv pool — documented limit for a 1 GB host.
+- (4) src/lib/eval: activateRound() integer-cents sum must equal 100.00 or
+  activation is refused + audited (weights_sum_100; 90/105/decimal cases).
+- (5) src/lib/production-guard: refuses production on missing/weak
+  SESSION_SECRET, loopback/dev-default DB creds, empty-password (trust) probe
+  success, or demo_seed marker; live refusal captured in
+  p3-addendum-checks.txt §1 item 5.
