@@ -35,6 +35,22 @@ export const DEFAULT_SETTINGS: Record<string, { value: unknown; description: str
     value: 5,
     description: "Password-reset requests per hour per client IP.",
   },
+  "team.max_members": {
+    value: 6,
+    description: "Max team members including leader (brief §5: 2–6; hard ceiling 6).",
+  },
+  "team.min_female": {
+    value: 1,
+    description: "Minimum female members for a submittable team (SIH rule, brief §5).",
+  },
+  "team.max_problems": {
+    value: 2,
+    description: "Max problem statements a team may select (brief §5.2: 1–2).",
+  },
+  "document.max_bytes": {
+    value: 10485760,
+    description: "Max upload size in bytes (10 MiB default; P5 documents).",
+  },
 };
 
 const CACHE_TTL_MS = 60_000;

@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   index,
   integer,
   pgEnum,
@@ -51,6 +52,8 @@ export const users = pgTable(
     email: text("email").notNull(),
     passwordHash: text("password_hash").notNull(),
     fullName: text("full_name").notNull(),
+    // SIH team composition: at least one female member — the field must exist
+    gender: text("gender"),
     collegeId: text("college_id"),
     department: text("department"),
     phone: text("phone"),
@@ -67,6 +70,7 @@ export const users = pgTable(
     index("users_institution_idx").on(t.institutionId),
     index("users_role_idx").on(t.role),
     index("users_collegeid_idx").on(t.collegeId),
+    check("users_gender_chk", sql`gender is null or gender in ('female','male','other')`),
   ]
 );
 

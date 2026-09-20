@@ -16,6 +16,8 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // each suite resets the throwaway test schema → must run sequentially
+    fileParallelism: false,
     include: ["src/integration/**/*.test.ts"],
     setupFiles: ["./test/int-env.ts"],
     testTimeout: 60000,

@@ -156,3 +156,41 @@ Format: date | decision | alternatives | rejected because | reason + evidence.
 - Rejected alternative: in-repo zod→JSON-Schema converter (larger surface,
   duplicates library behaviour); the library (zod-to-openapi 9.1.0, peer
   zod ^4) works once the instance problem is solved.
+
+## D21 — S9 CSRF allow-list extended to multipart/form-data for file upload (2026-09-20, P5)
+- Decision: mutating requests require a same-origin Origin/Host match AND a
+  content-type of application/json OR multipart/form-data. Everything else
+  (form-encoded, etc.) is still rejected.
+- Reason: the documents feature (P5) needs browser file uploads; browsers
+  always send Origin on same-origin multipart POSTs, so the same-origin check
+  still defeats CSRF. The JSON-only rule was a simplification made before the
+  upload surface existed.
+- Residual risk (accepted): multipart bodies are limited by the route
+  (10 MiB document.max_bytes enforced in service) and magic-byte sniffed.
+
+## D22 — Proposal create is team-scoped; invites accepted by team id, not token (2026-09-20, P5)
+- Decision: POST /api/v1/teams/:id/proposals (team scope from URL) instead of
+  POST /api/v1/proposals with teamId in the body; POST /api/v1/teams/:id/
+  accept instead of the registry's original /api/v1/invites/:token/accept.
+- Reason: (1) URL scoping lets the route layer run can() with the real team
+  context (body-scoped resources can't be checked before the handler runs);
+  (2) the schema has no invite-token table, and adding one would widen the
+  attack surface for a flow where the invitee is a registered, logged-in user
+  who holds a pending team_members row. The service validates the pending
+  invitation + same institution on accept.
+- Residual risk (documented): an invited user who loses access to the team id
+  cannot self-serve via a magic link (email invite link is a P6/P8 concern —
+  the email service isn't built yet; the DB row is the source of truth).
+
+## D23 — S4 immutability trigger is CONDITIONAL (freeze + draft edits allowed, everything else blocked) (2026-09-20, P5)
+- Decision: proposal_versions trigger: DELETE always raises
+  'immutable'; UPDATE is allowed only (a) on working drafts (is_final=false)
+  or (b) to freeze a working draft (is_final false→true) with every content
+  column byte-identical (IS NOT DISTINCT FROM) and the same version_no.
+  Any other change to a final row raises 'immutable'.
+- Reason: the submit path legitimately must flip is_final in ONE transaction;
+  a blanket UPDATE/DELETE ban (first implementation, caught by the
+  integration tests) broke the product. The conditional trigger keeps the
+  DB-level guarantee: submitted content can never be altered or deleted.
+- Residual risk (documented): the trigger is the last line; the app also has
+  no update API for final rows and audit trails every change.

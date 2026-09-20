@@ -92,6 +92,8 @@ export interface UserLike {
     | "evaluator"
     | "participant";
   institutionId?: string | null;
+  email?: string | null;
+  fullName?: string | null;
 }
 
 export interface CanContext {

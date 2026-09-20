@@ -1,0 +1,76 @@
+# P5 check evidence — 2026-09-20 (sandbox)
+Teams + proposals (immutable versions) + documents (S2 ACL).
+
+## 1. RED → GREEN (failing-test-first)
+- `src/integration/teams.test.ts` (9), `src/integration/proposals.test.ts` (7),
+  `src/integration/documents.test.ts` (6) written BEFORE the services existed.
+- Observed RED: `Cannot find package '@/lib/teams'` / `'@/lib/proposals'` /
+  `'@/lib/documents'` (3 files failing, 42 pre-existing still green).
+- Implementations: src/lib/teams, src/lib/proposals, src/lib/documents +
+  scope resolvers for route-level can() + 15 API routes.
+- Mid-iteration bugs found by the tests and fixed (kept here for honesty):
+  - first immutability trigger was BEFORE UPDATE OR DELETE on ALL rows →
+    blocked the service's own legitimate freeze; rewritten as a CONDITIONAL
+    trigger (see DECISIONS D23); tests then proved both the freeze works and
+    tampering is rejected at the DB level.
+  - text/uuid comparison in the document-list query (owner_id text vs
+    proposals.id uuid) → cast added, caught by integration run.
+  - multipart uploads were rejected by the JSON-only CSRF rule → S9
+    allow-list now includes multipart/form-data with the SAME origin
+    requirement (D21) + new csrf unit test.
+
+## 2. Final check results
+```
+$ npx tsc --noEmit                               → clean
+$ npm run lint                                   → 0 problems
+$ npx vitest run                                 → 10 files / 54 tests PASS
+$ npx vitest run --config vitest.int.config.ts   → 7 files / 64 tests PASS
+$ npm run build                                  → ✓ Compiled (23/23 static pages)
+$ npx drizzle-kit generate                       → no drift (0002 committed)
+```
+Integration suites: schema 10, auth 11, p3-addendum 15, problems 6,
+teams 9, proposals 7, documents 6.
+Unit: 54 (incl. csrf multipart case, route-inventory, match-route, can()).
+
+## 3. Live smoke (real HTTP, `next dev`, dev DB with demo seed)
+Full transcript: docs/evidence/p5-smoke.txt. Key lines:
+```
+POST /api/v1/teams (no cookie)                         → 401 UNAUTHORIZED
+POST /api/v1/teams (leader)                            → 201 team + rules {maxMembers:6,minFemale:1,maxProblems:2}
+POST /api/v1/teams/:id/invites (leader)                → 201 invited (female member, same inst)
+POST /api/v1/teams/:id/accept (member)                 → 200
+GET  /api/v1/teams/:id  member → 200 | spoc(same inst) → 200 | evaluator(unassigned) → 403
+POST /api/v1/teams/:id/problems (2 published)          → 200 problems set: 2
+POST /api/v1/teams/:id/proposals (leader)              → 201 draft, version 0
+PATCH /api/v1/proposals/:id (autosave draft)           → 200
+POST /api/v1/proposals/:id/submit (round DRAFT)        → 409 "submission window ... not open"
+   (round activated via SQL for the smoke)
+POST /api/v1/proposals/:id/submit (round ACTIVE)       → 200 status: submitted version: 1
+PATCH /api/v1/proposals/:id after submit (S4)          → 409 "edits allowed only while draft or after 'changes requested'"
+POST /api/v1/teams/:id/documents (multipart, leader)   → 201 document (sha256 stored)
+GET  /api/v1/documents/:id  leader 200 | member 200 | spoc 200 | evaluator(unassigned) 403
+GET  /api/v1/documents/:id/download (leader)           → 200, 24 bytes (exact file size)
+POST /api/v1/teams/:id/documents (evaluator, cross-team) → 403 FORBIDDEN
+DELETE /api/v1/teams                                   → 405 METHOD_NOT_ALLOWED {allowed: POST}
+GET  /api/v1/teams/00000000-...-000000000000           → 404 NOT_FOUND
+```
+
+## 4. Notes / caveats
+- S4 immutability is enforced at THREE levels: no update API after submit
+  (service state machine), the conditional DB trigger (raw UPDATE/DELETE of a
+  final version row raises 'immutable' — proven by integration test against
+  the real DB), and audit fields on every row.
+- "Assigned evaluator" for document ACL = has an evaluations row for any
+  proposal of the owning team; "assigned mentor" = mentorships row. Both
+  proven in the S2 matrix test (cross-team member, cross-institution SPOC,
+  unassigned mentor, unassigned evaluator, no-team participant all DENIED;
+  super_admin ALLOWED).
+- Invites: no token table in the schema, so acceptance is team-scoped
+  (POST /teams/:id/accept) with the service validating the pending invite
+  row + same institution (D22). The registry's original
+  /invites/:token/accept entry was replaced.
+- E2E browser suite (Playwright full journey) is P9 per plan — this phase's
+  HTTP proof is the smoke above.
+- Demo seed now creates leader(male)/member(female)/spoc/mentor/evaluator/
+  admin with genders and SPOC-institution fixed (needed for the min_female
+  and SPOC-same-institution rules).

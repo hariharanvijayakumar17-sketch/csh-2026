@@ -40,6 +40,14 @@ describe("S9 CSRF protection for mutating routes", () => {
     expect(checkMutatingRequest(h)).toBe("origin_mismatch");
   });
 
+  it("accepts a same-origin multipart POST (file upload)", () => {
+    const h = headers({
+      origin: "https://csh.example.in",
+      "content-type": "multipart/form-data; boundary=xyz",
+    });
+    expect(checkMutatingRequest(h)).toBe("ok");
+  });
+
   it("rejects non-JSON content types (form-encoded CSRF weapon)", () => {
     const h = headers({
       origin: "https://csh.example.in",

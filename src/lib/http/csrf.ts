@@ -3,8 +3,9 @@
  *  1. Origin/Host check — browsers always send Origin on mutations; it must
  *     match the request Host (scheme-agnostic comparison: dev proxies serve
  *     http while Origin may say https on the same host).
- *  2. JSON content-type enforcement — form-encoded requests are the classic
- *     CSRF weapon; our API is JSON-only.
+ *  2. Content-type allow-list — only application/json and
+ *     multipart/form-data (file upload) are accepted; form-encoded and other
+ *     types are the classic CSRF weapon.
  * GET/HEAD never require these (safe methods, read-only by design).
  */
 
@@ -29,7 +30,9 @@ export function checkMutatingRequest(headers: Headers): CsrfResult {
   }
 
   const ct = (headers.get("content-type") ?? "").toLowerCase();
-  if (!ct.startsWith("application/json")) {
+  const allowed =
+    ct.startsWith("application/json") || ct.startsWith("multipart/form-data");
+  if (!allowed) {
     return "bad_content_type";
   }
   return "ok";
@@ -50,7 +53,7 @@ export function csrfGuard(headers: Headers): Response | null {
         message:
           res === "origin_mismatch"
             ? "Origin does not match host (CSRF protection)"
-            : "Content-Type must be application/json",
+            : "Content-Type must be application/json or multipart/form-data",
       },
     },
     { status: 400 }

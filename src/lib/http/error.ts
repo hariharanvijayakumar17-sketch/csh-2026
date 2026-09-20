@@ -8,6 +8,7 @@ export type ApiErrorCode =
   | "BAD_REQUEST"
   | "UNAUTHORIZED"
   | "FORBIDDEN"
+  | "PAYLOAD_TOO_LARGE"
   | "NOT_FOUND"
   | "CONFLICT"
   | "LOCKED"

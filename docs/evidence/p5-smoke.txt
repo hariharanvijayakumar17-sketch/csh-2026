@@ -1,0 +1,42 @@
+# P5 live HTTP smoke — 2026-09-20 (sandbox, next dev, dev DB with demo seed)
+# Full transcript of /tmp/p5smoke.sh (reusable script kept in /tmp during session).
+# Demo creds (dev-only, random per seed): leader/member/spoc/evaluator.*.mu9p3tf3@demo.test
+#
+== login leader/member/spoc/evaluator
+{"success":true,"data":{"user":{"id":"1d0314c4-8edd-4434-bef6-5876b48c4c7a","email":"leader.mu9p3tf3@demo.test","role":"
+{"success":true,"data":{"user":{"id":"befb64bf-3d0d-4449-9920-8b82c67d8289","ema
+{"success":true,"data":{"user":{"id":"3034090b-2a13-483d-930d-b39659e99313","ema
+{"success":true,"data":{"user":{"id":"d18b4077-a665-487e-8f08-1d387d7f606a","ema
+== no-cookie POST /teams -> 401
+{"success":false,"error":{"code":"UNAUTHORIZED","message":"Authentication required"},"requestId":"c5bd8283-02b9-4254-b7a8-4c62b092d6cf"}
+== create team (leader)
+{"success":true,"data":{"team":{"id":"6e407ed0-29b7-41fe-99f9-d2c8e0e91293","name":"P5 Smoke Squad 2","status":"draft","leaderUserId":"1d0314c4-8edd-4434-bef6-5876b48c4c7a","institutionId":"2ff3aab6-e065-404a-8d9d-126c1888b156","institutionName":"Demo College mu9p3tf3","problemIds":[],"problems":[],
+rules: {'maxMembers': 6, 'minFemale': 1, 'maxProblems': 2}
+== invite member (leader) then accept (member)
+{"success":true,"data":{"member":{"userId":"befb64bf-3d0d-4449-9920-8b82c67d8289","email":"member.mu9p3tf3@demo.test","fullName":"Demo member","gender":"female","role":"member","status":"invited","acc
+{"success":true,"data":{"team":{"id":"6e407ed0-29b7-41fe-99f9-d2c8e0e91293","name":"P5 Smoke Squad 2","status":"draft","leaderUserId":"1d0314c4-8edd-4434-bef6-5
+== member GET /teams/:id (own team) + spoc GET (own inst) + evaluator GET (unassigned -> 403)
+member: {"success":true,"data":{"team":{"id":"6e407ed0-29b7-41fe-99f9-d2c8e0e91293","name":"P5 Smoke Squad 2","status":"draft","
+spoc:   {"success":true,"data":{"team":{"id":"6e407ed0-29b7-41fe-99f9-d2c8e0e91293","name":"P5 Smoke Squad 2","status":"draft","
+evaluator (unassigned): 403
+== set problems (2 published)
+problems set: 2 status: draft
+== create proposal in DRAFT round -> submit must CONFLICT (window closed)
+{"success":true,"data":{"proposal":{"id":"1526f946-3204-496a-be40-b7b7176a65fa","teamId":"6e407ed0-29b7-41fe-99f9-d2c8e0e91293","problemId":"7d2a5341-b624-4838-89b8-b669bca8ec19","roundId":"38fa8f24-b
+{"success":true,"data":{"proposal":{"id":"1526f946-3204-496a-be40-b7b7176a65fa","teamId":"6e407ed0-29b7-41fe-99f9-d2c8e0
+submit on draft round: {"success":false,"error":{"code":"CONFLICT","message":"The submission window for this round is not open"},"requestId":"e401f713-25ca-4cda-932f-3c1010412c52"}
+== submit after round active (team has 1 female) -> 200 submitted
+status: submitted version: 1
+== edit after submit -> CONFLICT (S4)
+{"success":false,"error":{"code":"CONFLICT","message":"Proposal is submitted; edits allowed only while draft or after 'changes requested'"},"requestId":"6cbbb4af-9f0e-4603-9b36-71bc771f0fd2"}
+== upload document (leader, multipart) + S2 ACL
+{"success":true,"data":{"document":{"id":"d2c7c631-814b-443b-aa37-90b06971a9df","ownerKind":"team","ownerId":"6e407ed0-29b7-41fe-99f9-d2c8e0e91293","teamId":"6e407ed0-29b7-41fe-99f9-d2c8e0e91293","purpose":"other","origi
+meta leader:   200
+meta member:   200
+meta spoc:     200
+meta evaluator (unassigned): 403
+download leader bytes: 24
+cross-team upload by evaluator -> 403: {"success":false,"error":{"code":"FORBIDDEN","message":"You do not have permission for this action"},"requestId":"cee487a5-df50-4f05-9198-bb
+== 405/404 envelopes
+DELETE /api/v1/teams: {"success":false,"error":{"code":"METHOD_NOT_ALLOWED","message":"Method DELETE not allowed; allowed: POST"}}
+GET /api/v1/teams/00000000-0000-4000-8000-000000000000: {"success":false,"error":{"code":"NOT_FOUND","message":"Team not found"},"requestId":"80937fad-e127-45d6-8cd9-bac71ed80b47"}

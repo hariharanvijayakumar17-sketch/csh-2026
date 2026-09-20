@@ -109,14 +109,17 @@ export const ROUTE_POLICIES: Record<string, RouteEntry[]> = {
     POST(Permissions.teamUpdate, "leader of own team; cap from settings"),
   ],
   "/api/v1/teams/:id/documents": [
+    P(Permissions.documentView, "S2 matrix; lists team + team-proposal docs"),
     POST(Permissions.teamUploadDocument, "own team or SPOC own inst (letter); S2/S10"),
   ],
-  "/api/v1/invites/:token/accept": [
-    POST(Permissions.teamView, "invited user accepts (service validates token)"),
+  "/api/v1/teams/:id/accept": [
+    POST(Permissions.teamView, "invited user accepts; service validates pending invite + same institution"),
+  ],
+  "/api/v1/teams/:id/proposals": [
+    POST(Permissions.proposalCreate, "leader of own team (team scope from URL)"),
   ],
 
   // ---------- proposals ----------
-  "/api/v1/proposals": [POST(Permissions.proposalCreate, "leader of own team")],
   "/api/v1/proposals/mine": [P(Permissions.proposalView, "own team proposals")],
   "/api/v1/proposals/:id": [
     P(Permissions.proposalView, "scoped audience (can)"),

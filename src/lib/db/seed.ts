@@ -50,7 +50,7 @@ export async function runDemoSeed(rawUrl: string = URL) {
         .limit(1)
     )[0].id;
 
-    const mk = async (role: string, label: string) => {
+    const mk = async (role: string, label: string, gender?: "female" | "male" | "other") => {
       const email = `${label}.${stamp}@demo.test`;
       const pw = devPassword(label);
       const [u] = await db
@@ -60,18 +60,22 @@ export async function runDemoSeed(rawUrl: string = URL) {
           passwordHash: await hashPassword(pw),
           fullName: `Demo ${label}`,
           role: role as never,
-          institutionId: role === "participant" ? institutionId : null,
+          institutionId: role === "participant" || role === "spoc" ? institutionId : null,
           emailVerifiedAt: new Date(),
+          gender,
         })
         .returning({ id: schema.users.id });
       return { email, pw, id: u.id, label };
     };
 
-    const leader = await mk("participant", "leader");
-    await mk("spoc", "spoc");
-    await mk("mentor", "mentor");
-    await mk("evaluator", "evaluator");
-    await mk("super_admin", "admin");
+    const accounts = [
+      await mk("participant", "leader", "male"),
+      await mk("participant", "member", "female"),
+      await mk("spoc", "spoc"),
+      await mk("mentor", "mentor"),
+      await mk("evaluator", "evaluator"),
+      await mk("super_admin", "admin"),
+    ];
 
     const problems = [
       { code: `PS-DEMO-${stamp}-1`, title: `Demo problem: campus waste sorting ${stamp}`, status: "published" as const },
@@ -88,9 +92,12 @@ export async function runDemoSeed(rawUrl: string = URL) {
       });
     }
 
+    const [maxOrd] = await db
+      .select({ m: sql<number>`coalesce(max(${schema.rounds.ordinal}), 0)` })
+      .from(schema.rounds);
     await db.insert(schema.rounds).values({
       name: `Demo Round 1 ${stamp}`,
-      ordinal: 1,
+      ordinal: (maxOrd?.m ?? 0) + 1,
       status: "draft",
     });
     const [round] = await db
@@ -108,8 +115,7 @@ export async function runDemoSeed(rawUrl: string = URL) {
     await setSetting("demo_seed", true, "DEVELOPMENT-ONLY marker; production guard refuses to start while set");
 
     console.log("Demo seed complete. Login (passwords are random, shown ONCE):");
-    for (const u of [leader]) console.log(`  ${u.label.padEnd(10)} ${u.email}  ${u.pw}`);
-    console.log("  (other demo accounts were created with printed passwords at seed time)");
+    for (const u of accounts) console.log(`  ${u.label.padEnd(10)} ${u.email}  ${u.pw}`);
   } finally {
     await raw.end();
   }
