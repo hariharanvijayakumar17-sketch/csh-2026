@@ -105,7 +105,7 @@ describe("S1 route inventory (every route has an explicit policy)", () => {
           ).toBe(true);
         }
         if (r.policy.kind === "public" && r.method === "PATCH") {
-          fail(`${path}: public PATCH is not allowed`);
+          throw new Error(`${path}: public PATCH is not allowed`);
         }
       }
     }

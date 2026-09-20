@@ -217,7 +217,7 @@ export function can(
 
     // --- documents (S2) ---
     case Permissions.documentView:
-      return isOwnTeamUploader(user, ctx, { viewOnly: true });
+      return isOwnTeamUploader(user, ctx);
     case Permissions.documentUpload:
       return isOwnTeamUploader(user, ctx);
 
@@ -337,11 +337,7 @@ function teamOfProposal(ctx: CanContext) {
  * assigned mentor, the assigned evaluator (respecting blind mode — handled by
  * the service hiding the team identity, not here), and admins (early-return).
  */
-function isOwnTeamUploader(
-  user: UserLike,
-  ctx: CanContext,
-  opts: { viewOnly?: boolean } = {}
-): boolean {
+function isOwnTeamUploader(user: UserLike, ctx: CanContext): boolean {
   if (!ctx.document) return false;
   const teamId =
     ctx.document.ownerKind === "team"

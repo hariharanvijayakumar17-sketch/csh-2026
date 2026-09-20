@@ -66,11 +66,6 @@ const ctxMentorUnassigned: CanContext = {
   team: teamA,
   mentorAssignedTeamIds: new Set(["t-z"]),
 };
-const ctxEvalAssigned: CanContext = {
-  team: teamA,
-  evaluatorAssignedTeamIds: new Set(["t-a"]),
-};
-
 const evalCtx = (over: Partial<NonNullable<CanContext["evaluation"]>> = {}) => ({
   evaluation: {
     id: "e-1",
