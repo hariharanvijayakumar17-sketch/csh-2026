@@ -1,0 +1,63 @@
+# P4 check evidence — 2026-09-20 (sandbox)
+Public site + problem repository + auth API + enforcement wiring.
+
+## 1. Checks
+```
+$ npx tsc --noEmit                       → clean
+$ npm run lint                           → 0 problems
+$ npx vitest run                         → 10 files / 53 tests PASS
+$ npx vitest run --config vitest.int.config.ts → 4 files / 42 tests PASS
+$ npm run build                          → ✓ Compiled successfully (20/20 static pages)
+$ npx drizzle-kit generate               → No schema changes
+```
+New this phase: match-route unit (6, failing-first) + problems integration (6,
+failing-first: "Cannot find package '@/lib/problems'" observed RED before
+implementation).
+
+## 2. Enforcement model (S1) — where what runs
+- EDGE middleware (src/middleware.ts): resolves EVERY /api/v1 request against
+  the route-policy registry (unregistered → 404 envelope; wrong method → 405
+  with allowed list), S9 CSRF on ALL mutating requests (same-origin Origin +
+  JSON-only), x-request-id stamping.
+- NODE route handlers: makeRouteHandler() — the single factory. Permission
+  routes: session from cookie → DB resolve → can(user, permission, ctx).
+  Public routes: optional session. Standard envelope everywhere.
+- The registry test (S1, P3) still walks the registry: 5/5 after adding the
+  clarifications GET + openapi entries (1:1 rule preserved).
+
+## 3. Live smoke (real HTTP, `next dev`, dev DB with demo seed)
+Full transcript: docs/evidence/p4-smoke.txt. Key lines:
+```
+GET  /api/v1/health                       → 200 {success:true,data:{status:"ok"}}
+GET  /api/v1/problems?pageSize=5          → 200 total=2 [PS-DEMO-mu9khy7o-2, …-1]
+GET  /api/v1/problems/PS-DEMO-mu9khy7o-2  → 200 "Demo problem: lab booking queue"
+POST /api/v1/auth/login (origin evil.com) → 400 "Origin does not match host (CSRF protection)"
+POST /api/v1/auth/login (form-encoded)    → 400 (content-type must be JSON)
+POST /api/v1/auth/login (demo leader)     → 200 + Set-Cookie csh_session=… (HttpOnly present, 30 d)
+GET  /api/v1/auth/session (cookie)        → 200 profile (emailVerified:true)
+POST /api/v1/teams (no cookie)            → 404 (route ships in P5 with its handler)
+GET  /api/v1/nope                         → 404 {error:{code:"NOT_FOUND"}}
+DELETE /api/v1/problems                   → 405 {allowed: GET}
+GET  /api/v1/openapi                      → 200 (3.1.0, 13 paths, 7 Zod-derived schemas)
+GET  / , /problems , /login               → 200 (SSR; /problems lists PS-DEMO codes)
+POST /api/v1/auth/logout                  → 200
+GET  /api/v1/auth/session (after logout)  → 401
+```
+
+## 4. Notes / caveats
+- Session cookie: HttpOnly, SameSite=Strict, Path=/, maxAge 30 d, Secure in
+  production. Value = raw 256-bit token; DB stores sha256 (P3 S9).
+- CSRF = Origin/Host + JSON-only (P3 design, proven here over real HTTP).
+  Non-browser clients must send Origin on mutations (k6/Playwright do).
+- Errors never leak internals: unexpected error → 500 generic envelope
+  (observed: the openapi runtime error returned the generic envelope while
+  the detail went to server logs only).
+- Problems public surface = published AND non-deleted ONLY (integration test
+  "item: lists ONLY published, non-deleted"; drafts/deleted invisible).
+- /api/v1/teams (and other P5+ routes) are registry-resolved (405/404 shape
+  correct) but 404 until P5 ships their handlers — expected, not a gap.
+- OpenAPI: single source of truth = the Zod route schemas via src/lib/zod.ts
+  (all routes import z from there; direct "zod" imports in routes are
+  forbidden — see DECISIONS D20; bundler duplicate-instance bug found live).
+- E2E (Playwright full journey) is P9 per plan; the smoke above is the P4
+  HTTP-level proof.

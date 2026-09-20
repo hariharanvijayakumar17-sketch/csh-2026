@@ -52,6 +52,7 @@ const PUBPOST = (reason: string): RouteEntry => ({
 export const ROUTE_POLICIES: Record<string, RouteEntry[]> = {
   // ---------- system ----------
   "/api/v1/health": [PUB("liveness; no data")],
+  "/api/v1/openapi": [PUB("OpenAPI 3.1 document generated from the Zod contracts")],
   "/api/v1/readyz": [PUB("readiness; no data")],
 
   // ---------- auth ----------
@@ -161,6 +162,7 @@ export const ROUTE_POLICIES: Record<string, RouteEntry[]> = {
   ],
   "/api/v1/problems/:id/clarifications": [
     POST(Permissions.problemClarify, "creator of own PS"),
+    PUB("published problems only; Q&A rows (service gates to published)"),
   ],
   "/api/v1/problems/:id/archive": [
     POST(Permissions.problemArchive, "creator of own PS / admin"),

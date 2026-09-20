@@ -1,0 +1,34 @@
+=== 1 health ===
+{"success":true,"data":{"status":"ok"},"requestId":"ac6c05f5-8915-4401-ac52-f2dbd05b932b"}
+=== 2 problems list (codes) ===
+True 2 ['PS-DEMO-mu9khy7o-2', 'PS-DEMO-mu9khy7o-1']
+=== 3 problem detail PS-DEMO-mu9khy7o-2 ===
+True Demo problem: lab booking queue mu9khy7o
+=== 4a login WRONG origin (must be 400 CSRF) ===
+400
+{"success":false,"error":{"code":"BAD_REQUEST","message":"Origin does not match host (CSRF protection)"}}
+=== 4b login form-encoded (must be 400 content-type) ===
+400
+=== 5 login demo leader (correct origin) ===
+{"success":true,"data":{"user":{"id":"0d9422bc-98dc-4a22-bb9d-6d3b44437428","email":"leader.mu9khy7o@demo.test","role":"participant"},"expiresAt":"2026-10-20T09:44:50.906Z"},"requestId":"59717286-dbc5-470d-856b-56c577a58
+--- set-cookie flags ---
+csh_session 54ea32bda7f93cd06407106c26fc8791bb7e6d31bb044babf9ee56d24f4d5986
+1
+=== 6 session (with cookie) ===
+{"success":true,"data":{"user":{"id":"0d9422bc-98dc-4a22-bb9d-6d3b44437428","email":"leader.mu9khy7o@demo.test","fullName":"Demo leader","role":"participant","institutionId":"24e56174-dc61-4469-9124-cc482b0e0379","emailVerified":true},"expiresAt":"2026-10-20T0
+=== 7 teams without cookie (must be 401) ===
+404
+=== 8 unknown route (404) + wrong method (405) ===
+404 {"success":false,"error":{"code":"NOT_FOUND","message":"Unknown API route"}}
+405 {"success":false,"error":{"code":"METHOD_NOT_ALLOWED","message":"Method DELETE not allowed; allowed: GET"}}
+=== 9 openapi ===
+3.1.0 Campus Solution Hackathon (CSH) 2026 — API v1 13 paths
+=== 10 pages ===
+/ -> 200
+/problems -> 200
+PS-DEMO-mu9khy7o-1
+/login -> 200
+=== 11 logout (with cookie) ===
+{"success":true,"data":{"message":"Logged out"},"requestId":"9b0c5b3c-592f-4da9-bc90-b922aad001f1"}
+=== 12 session after logout (must be 401) ===
+401

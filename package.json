@@ -17,6 +17,7 @@
     "db:bootstrap-admin": "tsx src/lib/db/bootstrap-admin.ts"
   },
   "dependencies": {
+    "@asteasolutions/zod-to-openapi": "^9.1.0",
     "drizzle-orm": "^0.45.2",
     "next": "15.5.25",
     "postgres": "^3.4.9",

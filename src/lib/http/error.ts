@@ -55,8 +55,8 @@ function defaultStatus(code: ApiErrorCode): number {
   }
 }
 
-export function ok<T>(data: T, requestId: string) {
-  return Response.json({ success: true as const, data, requestId });
+export function ok<T>(data: T, requestId: string, status = 200) {
+  return Response.json({ success: true as const, data, requestId }, { status });
 }
 
 export function fail(err: unknown, requestId: string) {

@@ -119,3 +119,40 @@ Format: date | decision | alternatives | rejected because | reason + evidence.
   (env-driven super-admin, strength-checked, refuses existing email).
   package.json already referenced both paths; the files did not exist —
   gap closed, both exercised (`db:migrate` + `db:seed` ran clean).
+
+## D18 — Enforcement split: edge middleware (registry+CSRF) vs node handlers (session+can) (2026-09-20, P4)
+- Decision: Next middleware (edge runtime, no Postgres access) resolves every
+  /api/v1 request against the route-policy registry and applies S9 CSRF on
+  mutations; DB-backed auth (session lookup + can()) runs in the single
+  route factory makeRouteHandler() on the node runtime.
+- Rejected alternative: all enforcement in middleware (impossible: edge
+  runtime cannot query Postgres; replicating the DB on edge is out of scope).
+- Residual risk (accepted): a route handler that skips makeRouteHandler()
+  would bypass session/can checks — mitigated by convention + the registry
+  test (every route has a policy) + code review; P9 E2E will exercise the
+  HTTP path end-to-end.
+
+## D19 — Email tokens ride in the email body (queue rows carry rendered content) (2026-09-20, P4)
+- Decision: verify/reset tokens are single-use, hashed, 30/60 min (P3). The
+  emailQueue row stores the RENDERED email (subject + body text/HTML with the
+  token link) because the queue schema has no payload column and the raw
+  token exists only in memory at issuance. P8 sender reads pending rows and
+  sends bodyText/Html.
+- Rejected alternatives: schema migration to add payload (deferred — the
+  email itself IS the payload carrier by design); synchronous sending
+  (no provider in sandbox; would be fake).
+- Residual risk (documented): raw token at rest in the email queue row until
+  sent/used (30–60 min token lifetime bounds exposure); P8 marks rows sent
+  and tokens are single-use regardless.
+
+## D20 — All Zod imports go through src/lib/zod.ts (extended once for OpenAPI) (2026-09-20, P4)
+- Decision: src/lib/zod.ts re-exports z after extendZodWithOpenApi(z); every
+  route schema imports from "@/lib/zod".
+- Reason: live bug found in P4 — the Next bundle created two zod instances,
+  so schemas' .openapi() (added by the extension) was missing at runtime
+  (500 on /api/v1/openapi, observed + logged). Single re-export point makes
+  the extension and the schemas share one instance regardless of bundler
+  dedupe behaviour.
+- Rejected alternative: in-repo zod→JSON-Schema converter (larger surface,
+  duplicates library behaviour); the library (zod-to-openapi 9.1.0, peer
+  zod ^4) works once the instance problem is solved.
