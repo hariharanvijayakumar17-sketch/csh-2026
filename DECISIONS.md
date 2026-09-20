@@ -166,7 +166,9 @@ Format: date | decision | alternatives | rejected because | reason + evidence.
   still defeats CSRF. The JSON-only rule was a simplification made before the
   upload surface existed.
 - Residual risk (accepted): multipart bodies are limited by the route
-  (10 MiB document.max_bytes enforced in service) and magic-byte sniffed.
+  (10 MiB document.max_bytes enforced in service) and content-verified
+  server-side (superseded by D24/F3: full content detection, not just
+  magic bytes).
 
 ## D22 — Proposal create is team-scoped; invites accepted by team id, not token (2026-09-20, P5)
 - Decision: POST /api/v1/teams/:id/proposals (team scope from URL) instead of
@@ -194,3 +196,55 @@ Format: date | decision | alternatives | rejected because | reason + evidence.
   DB-level guarantee: submitted content can never be altered or deleted.
 - Residual risk (documented): the trigger is the last line; the app also has
   no update API for final rows and audit trails every change.
+
+## D24 — P5 external audit: F1–F11 fixed (one commit per item, probe file as acceptance) (2026-09-20)
+- Context: external reviewer delivered 11 defects (F1–F11) plus a probe
+  file (src/integration/audit-probe.test.ts, added unmodified) covering
+  F1–F6 as acceptance tests. RED evidence: docs/evidence/p5-audit-red.txt
+  (7/7 fail); GREEN: docs/evidence/p5-audit-green.txt (all green).
+- F1 (cf8fa16): invited ≠ member. All membership checks use ACCEPTED rows
+  (invited grant nothing); withdrawn teams stay visible to members but no
+  longer block team formation; new POST /teams/:id/decline; accepting or
+  forming a team auto-declines stale pending invites; team_member_status
+  gains 'declined' (idempotent migration 0003).
+- F2 (b1db3c8): document upload separated from view. document.upload =
+  accepted team members only (mentors/evaluators read-only); SPOC
+  authorization letter via NEW dedicated route
+  POST /teams/:id/documents/authorization-letter + document.upload_letter
+  (own institution, purpose fixed, fail-closed).
+- F3 (ee9e17d): server-side content detection. file.type never trusted;
+  detectContent() classifies by bytes; OOXML = real zip central-directory
+  parse ([Content_Types].xml + word/ ⇒ docx, + ppt/ ⇒ pptx, else zip;
+  unparsable PK ⇒ rejected); mimeDetected = server verdict; legacy
+  .doc/.ppt rejected; RFC 5987 download header.
+- F4 (45d7bbd, cleanup a2d8af8): fail-closed assignment sets. Per-role
+  === true checks (no ?? fall-through, no cross-set fall-through); BOTH
+  sets populated by resolveTeamScope/getTeam/docCtx/proposals ctxFor via
+  shared helper src/lib/authz/assigned-teams.ts.
+- F5 (e8eb5a7): proposalReview = creator of the proposal's problem
+  statement (creatorUserId match via ctx.proposal) or SPOC of the team's
+  institution. Other problem_crectors denied.
+- F6 (2f600cf, cleanup 09663b3): upload state/deadline gates. LOCKED for
+  withdrawn/rejected teams and for proposal-owned docs beyond draft /
+  changes-requested; DEADLINE_PASSED after document.upload_deadline (new
+  setting, '' = none — settings.value is NOT NULL); super_admin override
+  writes audit_log (document.upload_override).
+- F7 (b468059): fail-closed SPOC portal perms (missing ctx institution
+  denies); announcement.update = author or own-institution SPOC
+  (problem_crectors removed).
+- F8 (1a788a6): git rm --cached data/ (12+ committed upload PDFs),
+  playwright-report/, test-results/; .gitignore; unit test polices git
+  ls-files (repo-hygiene.test.ts).
+- F9 (8146ad6): trust probe dependency-injected (accepted/rejected/
+  unreachable); item-5 integration test no longer assumes the sandbox is
+  trust — verdict mapping unit-tested, real probe smoke-runs against the
+  test DB in any auth mode (verified against real Postgres trust AND
+  reject rules).
+- F10 (db5d302): URL UUID params validated BEFORE auth in
+  makeRouteHandler (400 envelope; removed the 200-with-error hack in the
+  documents route). Drive-by fix: GET /teams/mine used team.view on empty
+  ctx ⇒ 403 for everyone since P5 ⇒ new team.list_mine self permission.
+- F11 (this commit): SECURITY.md created — verified claims only + known
+  gaps; DECISIONS updated.
+- Rule reaffirmed: the reviewer's probe file is the acceptance contract for
+  F1–F6; F7–F10 had written red tests before their fixes (see each commit).
