@@ -10,7 +10,7 @@ import { uploadDocument, getDocument, listTeamDocuments } from "@/lib/documents"
 import { createTeam, inviteMember, acceptInvite, setTeamProblems, withdrawTeam } from "@/lib/teams";
 import { createProposal, updateProposalDraft, submitProposal } from "@/lib/proposals";
 import { setSetting } from "@/lib/settings";
-import { auditLog, proposals } from "@/lib/db/schema";
+import { proposals } from "@/lib/db/schema";
 import {
   bootDb,
   makeActiveRound,
