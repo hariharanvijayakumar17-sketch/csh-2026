@@ -12,6 +12,11 @@
 
 # testing
 /coverage
+/playwright-report/
+/test-results/
+
+# F8: runtime data (user uploads) is NEVER committed
+/data/
 
 # next.js
 /.next/
