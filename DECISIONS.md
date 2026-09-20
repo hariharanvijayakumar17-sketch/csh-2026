@@ -48,3 +48,74 @@ Format: date | decision | alternatives | rejected because | reason + evidence.
 ## D10 — 2026-09-20 — Commit identity for the sandbox bot
 - user.name "csh-2026-bot", user.email "csh-2026-bot@users.noreply.github.com" (local git config).
 - Reason: no card/account; noreply style email is non-secret. Status: DECISION.
+
+## D11 — Rate limits: generous per-IP, strict per-account, stored in `settings` (2026-09-20, P3 addendum 1)
+- Decision: thresholds live in the `settings` table (admin-editable, 60 s cache):
+  `ratelimit.login.ip_per_min=60` (campus NAT shares one egress IP),
+  `ratelimit.login.account_per_min=10`, register/reset defaults. Code carries
+  only fallbacks identical to the seeded defaults.
+- Alternatives: hard-coded constants (rejected: brief requires admin-editable
+  event rules; campus IP pressure makes hard-coded strict IP limits a
+  registration-day outage); per-IP Redis (rejected: no Redis in v1 stack,
+  Postgres fixed-window is sufficient at college scale).
+- Evidence: p3-addendum integration tests "item 1" (runtime edit changes
+  behaviour); docs/evidence/p3-addendum-checks.txt §1/§2.
+
+## D12 — Progressive (account, IP) login delay replaces hard account lockout (2026-09-20, P3 addendum 2)
+- Decision: on password failure, (account, client IP) row in `login_delays`
+  increments; from the 3rd failure a delay applies: 30 s, doubling per
+  failure, cap 30 min. Success from an IP deletes the row. Users-level
+  `failed_attempts`/`locked_until` dropped (migration 0001).
+- Rejected alternative: keep 5-fail/15-min global lock — a stranger can
+  lock a real user out by failing from another IP (self-DoS, support burden
+  during registration week).
+- Residual risk (accepted, documented): a single attacker IP can still
+  delay logins from that IP only; the strict per-account rate limit bounds
+  guessing speed. Evidence: "item 2" tests (attacker slowed, legitimate
+  IP immediate).
+
+## D13 — Round criteria weights must sum to exactly 100 at activation (2026-09-20, P3 addendum 4)
+- Decision: `activateRound()` rejects unless the sum of the round's
+  `round_criteria.weight` (numeric(5,2)) equals exactly 100.00 (compared in
+  integer cents). Rejection audited (`round.activate_rejected`). Per-row
+  0..100 DB check remains as backstop.
+- Rejected alternative: DB-level cross-row constraint (Postgres has no
+  aggregate CHECK); application-level is auditable and testable.
+
+## D14 — Production startup guard + sandbox `trust` is sandbox-only (2026-09-20, P3 addendum 5)
+- Decision: `src/instrumentation.ts` runs `runProductionGuard()` at server
+  start. In production it THROWS (fail-closed) on: missing/loopback/
+  no-password/dev-default DATABASE_URL; SESSION_SECRET missing/default/
+  <32 chars; `settings.demo_seed=true`; or an empty-password PROBE
+  connection succeeding (= trust/no-password auth detected live).
+  In development the same checks only warn (the sandbox Postgres uses
+  loopback `trust` — SANDBOX-ONLY; production MUST be SCRAM + real creds).
+- Rejected alternative: attestation env flag only (weak: a misconfigured
+  deploy could lie); live probe + static checks is stronger.
+- Caveat (documented): if the DB is unreachable the probe fails with "no
+  evidence of trust" and the guard passes — the app then fails to start
+  anyway on its real connection (no fail-open window for serving).
+- Evidence: live refusal captured in docs/evidence/p3-addendum-checks.txt §1
+  item 5 + unit (9) + integration (4) tests.
+
+## D15 — scrypt costs and memory limit (2026-09-20, P3 addendum 3)
+- Decision: N=16384 (2^14), r=8, p=1, keyLen 64 — EXPORTED and covered by
+  unit tests; dummy hash regenerated to the identical parameters (incl.
+  64-byte output) so unknown-email timing equalisation costs the same.
+- Memory limit: 128·N·r = 16 MiB per hash; libuv pool (UV_THREADPOOL_SIZE=4,
+  pinned in deploy docs) ⇒ ≤ ~64 MiB concurrent. Safe on a 1 GB host.
+  Raising N requires re-checking this bound.
+
+## D16 — `server-only` guards: where they stay, where they go (2026-09-20)
+- Decision: auth modules (login/sessions/tokens/csrf/rate-limit) keep
+  `import "server-only"` (route-only code). The shared DB client and
+  `settings` module drop it because CLI scripts (`db:seed`,
+  `db:bootstrap-admin`) run under plain tsx where Next does not provide
+  the package. Test config aliases `server-only` to a no-op stub.
+
+## D17 — db:seed + db:bootstrap-admin implemented (were missing) (2026-09-20)
+- Decision: `src/lib/db/seed.ts` (dev-only demo data, random passwords
+  printed once, sets demo_seed marker) and `src/lib/db/bootstrap-admin.ts`
+  (env-driven super-admin, strength-checked, refuses existing email).
+  package.json already referenced both paths; the files did not exist —
+  gap closed, both exercised (`db:migrate` + `db:seed` ran clean).

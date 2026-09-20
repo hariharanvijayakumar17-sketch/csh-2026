@@ -13,6 +13,7 @@ import {
   rotateSessions,
 } from "@/lib/auth/sessions";
 import { login } from "@/lib/auth/login";
+import { seedDefaultSettings } from "@/lib/settings";
 import {
   consumeVerificationToken,
   issueVerificationToken,
@@ -41,6 +42,7 @@ beforeAll(async () => {
   raw = postgres(TEST_URL, { max: 10 });
   db = drizzle(raw, { schema });
   await migrate(db, { migrationsFolder: "./drizzle" });
+  await seedDefaultSettings();
 }, 120000);
 
 afterAll(async () => {
@@ -129,41 +131,18 @@ describe("S7 login: lockout, non-enumeration, per-IP rate limit", () => {
     expect(b.status).toBe("invalid_credentials");
   });
 
-  it("5 failures lock the account; correct password rejected while locked", async () => {
-    const email = `lock.${Date.now()}@t.io`;
-    const uid = await makeUser(email, "Passw0rd!xyz");
-    const myIp = ip();
-    for (let i = 0; i < 5; i++) {
-      const r = await login({ email, password: "bad-pass-123", clientIp: myIp });
-      expect(r.status).toBe("invalid_credentials");
-    }
-    const locked = await db
-      .select()
-      .from(schema.users)
-      .where(eq(schema.users.id, uid));
-    expect(locked[0].lockedUntil).not.toBeNull();
-    expect(locked[0].lockedUntil!.getTime()).toBeGreaterThan(Date.now());
-    const r = await login({ email, password: "Passw0rd!xyz", clientIp: myIp });
-    expect(r.status).toBe("locked");
-    // after the lock window, login works again
-    await db
-      .update(schema.users)
-      .set({ lockedUntil: new Date(Date.now() - 1000) })
-      .where(eq(schema.users.id, uid));
-    const r2 = await login({ email, password: "Passw0rd!xyz", clientIp: myIp });
-    expect(r2.status).toBe("ok");
-  });
+  // NOTE (P3 addendum 2): the old hard 5-fail/15-min account lockout was
+  // replaced by progressive delay keyed on (account, client IP) — covered in
+  // src/integration/p3-addendum.test.ts ("item 2" suite).
 
-  it("per-IP rate limit rejects beyond the window (S8)", async () => {
-    const myIp = ip();
+  it("per-ACCOUNT rate limit (strict, settings-driven) rejects beyond the window", async () => {
+    const email = `rl.${Date.now()}@t.io`;
+    await makeUser(email, "Passw0rd!xyz");
     let last: { status: string } = { status: "" };
     for (let i = 0; i < 11; i++) {
-      last = (await login({
-        email: `rl.${Date.now()}@t.io`,
-        password: "x",
-        clientIp: myIp,
-      })) as { status: string };
+      last = (await login({ email, password: "x", clientIp: ip() })) as { status: string };
     }
+    // 11 attempts on one account (fresh IP each time — IP limit is generous)
     expect(last.status).toBe("rate_limited");
   });
 });

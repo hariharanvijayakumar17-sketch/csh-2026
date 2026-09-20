@@ -5,6 +5,7 @@ import {
   integer,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -56,8 +57,6 @@ export const users = pgTable(
     role: userRole("role").notNull().default("participant"),
     emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
     mustChangePassword: boolean("must_change_password").notNull().default(false),
-    failedAttempts: integer("failed_attempts").notNull().default(0),
-    lockedUntil: timestamp("locked_until", { withTimezone: true }),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
     ...timestamps,
     ...auditBy,
@@ -92,6 +91,26 @@ export const userSessions = pgTable(
     index("sessions_user_idx").on(t.userId, t.createdAt),
     index("sessions_expiry_idx").on(t.expiresAt),
   ]
+);
+
+/**
+ * Progressive login delay keyed on (account, client IP) — P3 addendum 2.
+ * A stranger failing logins from IP B only slows (account, B); the
+ * legitimate user's own IP is unaffected (no cross-IP account lockout).
+ * Success from an IP resets that pair's counter.
+ */
+export const loginDelays = pgTable(
+  "login_delays",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    clientIp: text("client_ip").notNull(),
+    failedAttempts: integer("failed_attempts").notNull().default(0),
+    delayUntil: timestamp("delay_until", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ name: "login_delays_pk", columns: [t.userId, t.clientIp] })]
 );
 
 export const emailVerificationTokens = pgTable(

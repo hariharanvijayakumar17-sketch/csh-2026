@@ -1,4 +1,6 @@
-import "server-only";
+// NOTE: no `import "server-only"` — this client is also imported by CLI
+// scripts (db:seed, drizzle) under plain node where Next does not resolve the
+// package. Auth modules (route-only) keep their server-only guards.
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import * as schema from "./schema";

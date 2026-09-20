@@ -1,0 +1,130 @@
+# P3 ADDENDUM check evidence — 2026-09-20 (sandbox)
+Items: (1) configurable rate limits, (2) progressive account+IP delay,
+(3) scrypt cost documentation, (4) round weights sum 100 at activation,
+(5) production startup guard. All five: failing test written first, observed
+failing, then implemented, then observed passing.
+
+## 0. RED (failing-first) — observed before any fix
+```
+$ npx vitest run --config vitest.int.config.ts src/integration/p3-addendum.test.ts
+Error: Cannot find package '@/lib/settings' ... Tests: no tests (suite failed to load)
+$ npx vitest run src/lib/auth/__tests__/password-params.test.ts src/lib/production-guard
+× exports explicit parameters: N=16384 r=8 p=1, keylen 64
+× dummy hash uses the SAME N/r/p as real hashes
+× dummyVerify never validates but performs a real scrypt work round
+Error: Cannot find module '../production-guard'
+```
+(Module-missing = the required functions/tables did not exist yet; the one
+assertion that could run, the timingSafeEqual length-mismatch guard, already
+passed from P3 core.)
+
+## 1. GREEN (after implementation)
+```
+$ npx vitest run                                   # unit
+Test Files  9 passed (9)
+Tests       47 passed (47)
+$ npx vitest run --config vitest.int.config.ts     # integration, real Postgres
+Test Files  3 passed (3)
+Tests       36 passed (36)
+  schema 10 | auth 11 | p3-addendum 15
+$ npx tsc --noEmit                                 # clean
+$ npm run lint                                     # 0 problems
+$ npm run build                                    # OK
+$ npx drizzle-kit generate                         # "No schema changes"
+```
+
+### item 1 — configurable, generous IP limits (tests: p3-addendum "item 1")
+- defaults seeded into `settings`: `ratelimit.login.ip_per_min=60`,
+  `ratelimit.login.account_per_min=10`
+- test proves runtime edit of the setting changes behaviour (set to 3 →
+  4th account attempt rate_limited; set IP limit to 4 → 5th IP attempt
+  rate_limited), i.e. NOT hard-coded
+- per-account limit proven independent of IP (fresh IPs still rate-limited)
+
+### item 2 — progressive delay keyed on (account, IP) (tests: "item 2")
+- 3 failures from attacker IP → 4th attempt SLOWED even with correct
+  password (30 s, doubling, cap 30 min; table `login_delays`, PK
+  (user_id, client_ip))
+- legitimate IP: immediate success, unaffected by attacker failures
+- delay expiry → success; success resets that (account, IP) counter
+  (2 further failures do NOT re-delay)
+- old hard lockout removed: migration 0001 drops users.failed_attempts and
+  users.locked_until (commit 0001_absent_mercury.sql)
+
+### item 3 — scrypt costs (unit: password-params.test.ts)
+- EXPORTED constants (verified by test): N=16384 (2^14), r=8, p=1, keyLen=64
+- DUMMY_HASH parsed in test: same N/r/p, 64-byte hash (regenerated so the
+  dummy's derivation length matches real hashes exactly)
+- comparison uses crypto.timingSafeEqual; length-mismatched stored hashes
+  rejected before compare (no throw) — regression test kept
+- MEMORY LIMIT (documented): scrypt work area = 128·N·r = 16 MiB per hash.
+  node:crypto runs scrypt in the libuv thread pool (default 4 threads,
+  UV_THREADPOOL_SIZE). Worst-case concurrent = 4 × 16 MiB = 64 MiB.
+  Safe on a 1 GB free-tier host; deploy doc sets UV_THREADPOOL_SIZE=4
+  explicitly. Never raises N beyond 16384 without re-checking this.
+
+### item 4 — round weights sum to exactly 100 at activation (tests: "item 4")
+- sums 90 / 105 / no-criteria → NOT activatable (codes weights_sum_100 /
+  weights_sum_100 / no_criteria), round stays draft, rejection audited
+- sum exactly 100 → activates (status=active)
+- fractional weights honoured in integer cents (33.33+33.33+33.34 = 100.00)
+- per-row 0..100 check constraint remains from P2 (schema.test.ts)
+
+### item 5 — production startup guard (unit 9 + integration 4)
+- env checks (unit): dev mode never refuses; production refuses on
+  missing DATABASE_URL, loopback host, missing/empty password, known
+  dev-default password, missing/default/short SESSION_SECRET
+- DB auth detection: EMPTY-PASSWORD PROBE — a real second connection with
+  no password. Sandbox Postgres (trust) ACCEPTS it → detected. Unreachable
+  server → probe fails → no evidence of trust (documented: the app then
+  cannot start anyway, its real connection fails).
+- demo seed: `settings.demo_seed=true` marker set by `npm run db:seed`;
+  guard refuses in production while it is present
+- startup wiring: src/instrumentation.ts → runProductionGuard() at server
+  start (node runtime); throws ProductionGuardError in production
+- LIVE PROOF (sandbox, `NODE_ENV=production npm run start` after seeding):
+  ```
+  Failed to prepare server Error [ProductionGuardError]: An error occurred
+  while loading instrumentation hook: production startup guard refused to
+  start: production: DATABASE_URL is missing; production: SESSION_SECRET is
+  missing; production: demo seed data present (settings.demo_seed)
+  ```
+  Server did NOT serve traffic.
+
+## 2. TRUSTED_PROXY_COUNT — what happens if it is wrong (item 1 doc)
+- The app NEVER reads x-forwarded-for unless the hop at the end of the
+  chain is trusted. TRUSTED_PROXY_COUNT = number of trusted hops in front
+  of the app (0 = no proxy; 1 = one reverse proxy, e.g. Caddy on the same
+  host, which must APPEND its own x-forwarded-for entry).
+- Set too LOW (0 behind Caddy): every request's client IP = the proxy's
+  own IP (the socket peer). Consequence: the whole campus shares the
+  proxy's socket address → the GENEROUS IP limit (60/min) becomes a
+  global cap → false 429s during peak (e.g. registration day), and
+  per-(account,IP) delays key on the proxy IP (still safe, less precise).
+  Detection: audit log shows one IP for all users.
+- Set too HIGH (e.g. 2 with only one proxy): the app trusts attacker
+  control of the rightmost x-forwarded-for entry → an attacker can
+  SPOOF client IPs, evade the IP rate limit and fragment the delay
+  buckets. The P3 integration test proves spoofing is IMPOSSIBLE at
+  TRUSTED_PROXY_COUNT=0 (rotated fake XFF values all land in one bucket).
+- Default is 0 (fail safe). Set it to the exact trusted hop count at
+  deploy time (P13); the value is not secret but is operationally critical.
+
+## 3. Sandbox-only Postgres `trust` — cannot appear in production
+- The sandbox cluster uses loopback `trust` so the test DB is reachable
+  without a password. This is SANDBOX-ONLY (DECISIONS D14).
+- Production config must use SCRAM-SHA-256 + real credentials; the
+  production guard makes the difference unmissable: it (a) refuses
+  loopback/dev-default DB URLs in production and (b) actively probes with
+  an empty password — a trust-configured production DB would therefore
+  refuse to start (proven above: the sandbox's trust DB is detected).
+
+## 4. Also fixed while here (gaps found)
+- `npm run db:seed` / `npm run db:bootstrap-admin` pointed at files that
+  did not exist (P0/P2 gap). Both implemented now:
+  - db:seed — development-only demo data; random per-run passwords printed
+    ONCE to stdout; sets the demo_seed marker (guard refuses prod with it)
+  - db:bootstrap-admin — env-driven (ADMIN_EMAIL/ADMIN_PASSWORD), refuses
+    weak passwords and existing emails; no default credentials anywhere
+- `server-only` import removed from db client + settings (CLI/tsx compat);
+  auth modules (route-only) keep their guards (DECISIONS D16).

@@ -1,7 +1,7 @@
 import "server-only";
 import { eq, and, isNull, sql } from "drizzle-orm";
 import { db } from "../db/client";
-import { passwordResetTokens, users } from "../db/schema";
+import { loginDelays, passwordResetTokens, users } from "../db/schema";
 import { generateToken, hashToken } from "./tokens";
 import { hashPassword, passwordStrengthIssues } from "./password";
 import { revokeAllSessions } from "./sessions";
@@ -75,8 +75,10 @@ export async function confirmReset(
   const hash = await hashPassword(newPassword);
   await db
     .update(users)
-    .set({ passwordHash: hash, failedAttempts: 0, lockedUntil: null })
+    .set({ passwordHash: hash })
     .where(eq(users.id, row.userId));
+  // clear any progressive login delays for this account
+  await db.delete(loginDelays).where(eq(loginDelays.userId, row.userId));
   const revoked = await revokeAllSessions(row.userId); // S7: reset revokes all sessions
   await writeAudit({
     action: "auth.password_reset",

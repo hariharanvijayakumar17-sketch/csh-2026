@@ -22,9 +22,15 @@ function scrypt(
 /**
  * Password hashing: node:crypto scrypt (DECISIONS D3 — zero native deps).
  * Format: scrypt$N=16384$r=8$p=1$<salt hex>$<hash hex>
+ *
+ * P3 addendum 3 (documented costs):
+ *   N=16384 (2^14), r=8, p=1, keylen 64
+ *   memory per hash = 128 * N * r = 16 MiB (bounded by UV_THREADPOOL_SIZE,
+ *   default 4 threads → ≤ ~64 MiB concurrent worst case — see
+ *   docs/evidence/p3-addendum-checks.txt for the limit discussion)
  */
-const SCRYPT_PARAMS = { N: 16384, r: 8, p: 1 } as const;
-const KEYLEN = 64;
+export const SCRYPT_PARAMS = { N: 16384, r: 8, p: 1, keyLen: 64 } as const;
+const KEYLEN = SCRYPT_PARAMS.keyLen;
 
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
@@ -67,8 +73,8 @@ export async function verifyPassword(
  * against a fixed dummy hash so response timing does not reveal whether an
  * email exists. NEVER a real user's hash.
  */
-const DUMMY_HASH =
-  "scrypt$N=16384$r=8$p=1$00000000000000000000000000000000$000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+export const DUMMY_HASH =
+  "scrypt$N=16384$r=8$p=1$00000000000000000000000000000000$70f6a44f7010cabb863ef5cc633fb220e9aa1cd447f3951e9f360c4b91b9d6c5d0fec314b16b9bf578c2c428069a1a8553913986e84789279b86df1b815dc97f";
 
 export async function dummyVerify(password: string): Promise<void> {
   await verifyPassword(password, DUMMY_HASH);
