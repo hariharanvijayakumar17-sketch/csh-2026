@@ -11,6 +11,7 @@ import {
   teams,
   users,
 } from "../db/schema";
+import { evaluatorAssignedTeamIds, mentorAssignedTeamIds } from "../authz/assigned-teams";
 import { can, Permissions, type CanContext, type UserLike } from "../authz/permissions";
 import { getNumberSetting } from "../settings";
 import { ApiError } from "../http/error";
@@ -93,7 +94,14 @@ async function ownTeamIds(userId: string): Promise<Set<string>> {
 async function ctxFor(user: UserLike, teamId: string) {
   const team = await loadTeam(teamId);
   const own = await ownTeamIds(user.id);
-  return { team, ownTeamIds: own };
+  // F4: both assignment sets populated — proposalView/feedback/check are
+  // fail-closed per role
+  return {
+    team,
+    ownTeamIds: own,
+    mentorAssignedTeamIds: user.role === "mentor" ? await mentorAssignedTeamIds(user.id) : undefined,
+    evaluatorAssignedTeamIds: user.role === "evaluator" ? await evaluatorAssignedTeamIds(user.id) : undefined,
+  };
 }
 
 async function loadProposalOr404(id: string) {

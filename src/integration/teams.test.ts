@@ -12,7 +12,9 @@ import {
   setTeamProblems,
   getTeam,
 } from "@/lib/teams";
+import { createProposal, updateProposalDraft, getProposal } from "@/lib/proposals";
 import { can, Permissions } from "@/lib/authz/permissions";
+import { evaluations, mentorships } from "@/lib/db/schema";
 import {
   bootDb,
   email,
@@ -236,4 +238,32 @@ describe("P5 team lifecycle + composition rules", () => {
     const roundId = await makeActiveRound(t.db);
     expect(roundId).toBeTruthy();
   });
+
+  it("F4: assigned mentor AND evaluator see the assigned team + proposal; unassigned denied (fail-closed)", async () => {
+    const inst = await makeInstitution(t.db);
+    const leader = await makeUser(t.db, { prefix: "f4l", institutionId: inst, gender: "male" });
+    const team = await createTeam(leader, { name: "F4 Team" });
+    const roundId = await makeActiveRound(t.db);
+    const problem = await makeProblem(t.db);
+    await setTeamProblems(leader, team.id, [problem.id]);
+    const p = await createProposal(leader, { teamId: team.id, problemId: problem.id, roundId, title: "F4" });
+    await updateProposalDraft(leader, p.id, { title: "F4", solution: "s" });
+
+    const mentor = await makeUser(t.db, { prefix: "f4m", role: "mentor" });
+    await t.db.insert(mentorships).values({ mentorUserId: mentor.id, teamId: team.id });
+    expect((await getTeam(mentor, team.id)).id).toBe(team.id);
+    expect((await getProposal(mentor, p.id)).id).toBe(p.id);
+
+    const ev = await makeUser(t.db, { prefix: "f4e", role: "evaluator" });
+    await t.db.insert(evaluations).values({ proposalId: p.id, roundId, evaluatorUserId: ev.id });
+    expect((await getTeam(ev, team.id)).id).toBe(team.id);
+    expect((await getProposal(ev, p.id)).id).toBe(p.id);
+
+    const strayM = await makeUser(t.db, { prefix: "f4sm", role: "mentor" });
+    await expect(getTeam(strayM, team.id)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    const strayE = await makeUser(t.db, { prefix: "f4se", role: "evaluator" });
+    await expect(getTeam(strayE, team.id)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(getProposal(strayE, p.id)).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
 });

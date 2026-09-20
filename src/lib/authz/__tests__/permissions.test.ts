@@ -193,6 +193,29 @@ describe("S1 central authorisation: can(user, permission, ctx)", () => {
     expect(can(member, Permissions.documentView, foreignForSpocA)).toBe(false);
   });
 
+  it("F4: role sets are checked per-role and fail closed — no ?? fall-through", () => {
+    const ctx: CanContext = {
+      team: teamA,
+      ownTeamIds: new Set<string>(),
+      // a DEFINED, EMPTY mentor set plus a populated evaluator set:
+      // a buggy `a ?? b` would hand a mentor the evaluator's team.
+      mentorAssignedTeamIds: new Set<string>(),
+      evaluatorAssignedTeamIds: new Set(["t-a"]),
+    };
+    expect(can(mentor, Permissions.teamView, ctx)).toBe(false);
+    const ctx2: CanContext = {
+      ...ctx,
+      mentorAssignedTeamIds: new Set(["t-a"]),
+      evaluatorAssignedTeamIds: new Set<string>(),
+    };
+    expect(can(evaluator, Permissions.teamView, ctx2)).toBe(false);
+    expect(can(mentor, Permissions.teamView, ctx2)).toBe(true);
+    expect(can(evaluator, Permissions.teamView, ctx)).toBe(true);
+    // undefined sets: fail closed
+    expect(can(mentor, Permissions.teamView, { team: teamA })).toBe(false);
+    expect(can(evaluator, Permissions.teamView, { team: teamA })).toBe(false);
+  });
+
   it("F2: upload is members-only; the SPOC letter is a separate institution-scoped permission", () => {
     const docTeam: CanContext = {
       team: teamA,

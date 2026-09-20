@@ -152,12 +152,12 @@ export function can(
       if (!ctx.team) return false;
       if (user.role === "spoc")
         return ctx.team.institutionId === user.institutionId;
-      if (user.role === "mentor" || user.role === "evaluator")
-        return ctx.mentorAssignedTeamIds?.has(ctx.team.id) ??
-          ctx.evaluatorAssignedTeamIds?.has(ctx.team.id) ??
-          false;
+      // F4: each role checks ITS OWN assignment set. Fail-closed: a missing
+      // or empty set denies; there is NO fall-through to the other set.
+      if (user.role === "mentor") return ctx.mentorAssignedTeamIds?.has(ctx.team.id) === true;
+      if (user.role === "evaluator") return ctx.evaluatorAssignedTeamIds?.has(ctx.team.id) === true;
       // participant: only own team (leader or member)
-      return ctx.ownTeamIds?.has(ctx.team.id) ?? false;
+      return ctx.ownTeamIds?.has(ctx.team.id) === true;
     }
 
     case Permissions.teamAcceptInvite:
@@ -204,13 +204,10 @@ export function can(
       const t = teamOfProposal(ctx);
       if (!t) return false;
       if (user.role === "spoc") return t.institutionId === user.institutionId;
-      if (user.role === "mentor" || user.role === "evaluator")
-        return (
-          ctx.mentorAssignedTeamIds?.has(t.id) ??
-          ctx.evaluatorAssignedTeamIds?.has(t.id) ??
-          false
-        );
-      return ctx.ownTeamIds?.has(t.id) ?? false;
+      // F4: own-set checks only, fail-closed (no `??` fall-through)
+      if (user.role === "mentor") return ctx.mentorAssignedTeamIds?.has(t.id) === true;
+      if (user.role === "evaluator") return ctx.evaluatorAssignedTeamIds?.has(t.id) === true;
+      return ctx.ownTeamIds?.has(t.id) === true;
     }
 
     case Permissions.proposalReview:

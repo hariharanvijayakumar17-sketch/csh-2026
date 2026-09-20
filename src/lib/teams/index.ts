@@ -4,13 +4,13 @@ import { db } from "../db/client";
 import {
   documents,
   institutions,
-  mentorships,
   problemStatements,
   teamMembers,
   teamProblems,
   teams,
   users,
 } from "../db/schema";
+import { evaluatorAssignedTeamIds, mentorAssignedTeamIds } from "../authz/assigned-teams";
 import { can, Permissions, type CanContext, type UserLike } from "../authz/permissions";
 import { getNumberSetting, getSetting } from "../settings";
 import { ApiError } from "../http/error";
@@ -135,15 +135,13 @@ export async function resolveTeamScope(user: UserLike, teamId: string): Promise<
   // F1: per-team ACCEPTED membership for the scope (invited rows grant nothing;
   // withdrawn teams remain visible to their members)
   const memberOk = await isAcceptedMember(user.id, teamId);
-  let mentorAssignedTeamIds: Set<string> | undefined;
-  if (user.role === "mentor") {
-    const rows = await db
-      .select({ teamId: mentorships.teamId })
-      .from(mentorships)
-      .where(eq(mentorships.mentorUserId, user.id));
-    mentorAssignedTeamIds = new Set(rows.map((r) => r.teamId));
-  }
-  return { team, ownTeamIds: memberOk ? new Set<string>([teamId]) : new Set<string>(), mentorAssignedTeamIds };
+  // F4: populate BOTH assignment sets (fail-closed per role; no fall-through)
+  return {
+    team,
+    ownTeamIds: memberOk ? new Set<string>([teamId]) : new Set<string>(),
+    mentorAssignedTeamIds: user.role === "mentor" ? await mentorAssignedTeamIds(user.id) : undefined,
+    evaluatorAssignedTeamIds: user.role === "evaluator" ? await evaluatorAssignedTeamIds(user.id) : undefined,
+  };
 }
 
 export async function createTeam(
@@ -408,20 +406,11 @@ export async function getTeam(user: UserLike, teamId: string): Promise<TeamDTO> 
     mentorAssignedTeamIds: undefined,
     evaluatorAssignedTeamIds: undefined,
   };
-  // mentors/evaluators see assigned teams: resolve assignments (P5 scope:
-  // mentorships; evaluator assignment arrives with P7 — the ctx field exists)
-  const mentorIds =
-    user.role === "mentor"
-      ? new Set(
-          (
-            await db
-              .select({ teamId: mentorships.teamId })
-              .from(mentorships)
-              .where(eq(mentorships.mentorUserId, user.id))
-          ).map((r) => r.teamId)
-        )
-      : undefined;
-  if (!can(user, Permissions.teamView, { ...ctx, mentorAssignedTeamIds: mentorIds })) {
+  // F4: assigned mentors/evaluators see assigned teams — each role's own set,
+  // fail-closed (no fall-through)
+  const mentorIds = user.role === "mentor" ? await mentorAssignedTeamIds(user.id) : undefined;
+  const evaluatorIds = user.role === "evaluator" ? await evaluatorAssignedTeamIds(user.id) : undefined;
+  if (!can(user, Permissions.teamView, { ...ctx, mentorAssignedTeamIds: mentorIds, evaluatorAssignedTeamIds: evaluatorIds })) {
     throw new ApiError("FORBIDDEN", "You do not have access to this team");
   }
 
@@ -508,12 +497,9 @@ export async function updateTeam(
 export async function listMyTeams(user: UserLike): Promise<TeamDTO[]> {
   if (user.role === "spoc") return listInstitutionTeams(user);
   if (user.role === "mentor") {
-    const rows = await db
-      .select({ teamId: mentorships.teamId })
-      .from(mentorships)
-      .where(eq(mentorships.mentorUserId, user.id));
+    const rows = Array.from(await mentorAssignedTeamIds(user.id));
     const out: TeamDTO[] = [];
-    for (const r of rows) out.push(await getTeam(user, r.teamId));
+    for (const r of rows) out.push(await getTeam(user, r));
     return out;
   }
   const own = await ownTeamIds(user.id);

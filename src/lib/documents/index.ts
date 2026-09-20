@@ -16,6 +16,7 @@ import { can, Permissions, type CanContext, type UserLike } from "../authz/permi
 import { getNumberSetting } from "../settings";
 import { ApiError } from "../http/error";
 import { detectContent } from "./content-detect";
+import { evaluatorAssignedTeamIds as loadEvaluatorSets, mentorAssignedTeamIds as loadMentorSets } from "../authz/assigned-teams";
 
 /**
  * P5: documents — S2 document ACL. Access is resolved exclusively through
@@ -108,23 +109,10 @@ async function docCtx(
     .where(eq(teams.id, doc.teamId))
     .limit(1);
   if (!teamRow) throw new ApiError("NOT_FOUND", "Document's owning team not found");
-  let mentorAssignedTeamIds: Set<string> | undefined;
-  let evaluatorAssignedTeamIds: Set<string> | undefined;
-  if (caller.role === "mentor") {
-    const rows = await db
-      .select({ teamId: mentorships.teamId })
-      .from(mentorships)
-      .where(eq(mentorships.mentorUserId, caller.id));
-    mentorAssignedTeamIds = new Set(rows.map((r) => r.teamId));
-  }
-  if (caller.role === "evaluator") {
-    const rows = await db
-      .select({ teamId: proposals.teamId })
-      .from(evaluations)
-      .innerJoin(proposals, eq(evaluations.proposalId, proposals.id))
-      .where(eq(evaluations.evaluatorUserId, caller.id));
-    evaluatorAssignedTeamIds = new Set(rows.map((r) => r.teamId));
-  }
+  // F4: each role's OWN set (shared helper; fail-closed in can())
+  const mentorAssignedTeamIds = caller.role === "mentor" ? await loadMentorSets(caller.id) : undefined;
+  const evaluatorAssignedTeamIds =
+    caller.role === "evaluator" ? await loadEvaluatorSets(caller.id) : undefined;
   return {
     document: { ownerKind: doc.ownerKind, ownerId: doc.ownerId, teamId: doc.teamId, purpose },
     team: {
