@@ -1,0 +1,256 @@
+# P5 external audit — RED evidence (probe file as received from reviewer, unmodified)
+# Run: npx vitest run --config vitest.int.config.ts src/integration/audit-probe.test.ts
+# 2026-09-20 sandbox (fresh session: postgres 17 reinstalled, trust-on-loopback = sandbox-only per D14)
+#
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.int.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/home/user/csh-2026[39m
+
+[90mstdout[2m | src/integration/audit-probe.test.ts
+[22m[39m{
+  severity_local: [32m'NOTICE'[39m,
+  severity: [32m'NOTICE'[39m,
+  code: [32m'00000'[39m,
+  message: [32m'schema "drizzle" does not exist, skipping'[39m,
+  file: [32m'dropcmds.c'[39m,
+  line: [32m'521'[39m,
+  routine: [32m'does_not_exist_skipping'[39m
+}
+
+ [31m❯[39m src/integration/audit-probe.test.ts [2m([22m[2m7 tests[22m[2m | [22m[31m7 failed[39m[2m)[22m[33m 653[2mms[22m[39m
+[31m     [31m×[31m A: invited-but-not-accepted user must NOT read team documents[39m[32m 13[2mms[22m[39m
+[31m     [31m×[31m B1: assigned mentor must NOT upload documents[39m[32m 6[2mms[22m[39m
+[31m     [31m×[31m B2: assigned evaluator must NOT upload documents[39m[32m 5[2mms[22m[39m
+[31m     [31m×[31m C: a file declared as docx but not a zip/OOXML must be rejected[39m[32m 5[2mms[22m[39m
+[31m     [31m×[31m D: assigned evaluator can view the team via resolveTeamScope + can()[39m[32m 4[2mms[22m[39m
+[31m     [31m×[31m E: a problem_creator must NOT review an arbitrary team's proposal[39m[32m 2[2mms[22m[39m
+[31m     [31m×[31m F: uploads after a SUCCESSFUL final submission must be rejected[39m[32m 142[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 7 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/integration/audit-probe.test.ts[2m > [22mAUDIT PROBES (each should pass if the system is correct)[2m > [22mA: invited-but-not-accepted user must NOT read team documents
+[31m[1mAssertionError[22m: promise resolved "{ …(13) }" instead of rejecting[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- Error {[39m
+[32m-   "message": "rejected promise",[39m
+[31m+ {[39m
+[31m+   "bytes": {[39m
+[31m+     "data": [[39m
+[31m+       37,[39m
+[31m+       80,[39m
+[31m+       68,[39m
+[31m+       70,[39m
+[31m+       45,[39m
+[31m+       49,[39m
+[31m+       46,[39m
+[31m+       52,[39m
+[31m+       32,[39m
+[31m+       120,[39m
+[31m+     ],[39m
+[31m+     "type": "Buffer",[39m
+[31m+   },[39m
+[31m+   "createdAt": 2026-09-20T14:52:44.664Z,[39m
+[31m+   "id": "8e6b8965-ffb2-4930-8de1-1858d08508cc",[39m
+[31m+   "mimeDetected": "application/pdf",[39m
+[31m+   "originalFilename": "a.pdf",[39m
+[31m+   "ownerId": "9a88f0c4-a544-4fc4-be82-a390548fe9e6",[39m
+[31m+   "ownerKind": "team",[39m
+[31m+   "purpose": "other",[39m
+[31m+   "sha256": "fc022288f3e49d09353987de1c32fc1427bd2a8b3657a340e86efb8e34efe003",[39m
+[31m+   "sizeBytes": 10,[39m
+[31m+   "status": "active",[39m
+[31m+   "teamId": "9a88f0c4-a544-4fc4-be82-a390548fe9e6",[39m
+[31m+   "uploadedBy": "db753674-b8fc-423d-9680-c8489f64fcbc",[39m
+[2m  }[22m
+
+[36m [2m❯[22m src/integration/audit-probe.test.ts:[2m38:46[22m[39m
+    [90m 36|[39m describe("AUDIT PROBES (each should pass if the system is correct)", (…
+    [90m 37|[39m   it("A: invited-but-not-accepted user must NOT read team documents", …
+    [90m 38|[39m     await expect(getDocument(invitee, docId)).rejects.toMatchObject({ …
+    [90m   |[39m                                              [31m^[39m
+    [90m 39|[39m   })[33m;[39m
+    [90m 40|[39m   [34mit[39m([32m"B1: assigned mentor must NOT upload documents"[39m[33m,[39m [35masync[39m () [33m=>[39m {
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/7]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/integration/audit-probe.test.ts[2m > [22mAUDIT PROBES (each should pass if the system is correct)[2m > [22mB1: assigned mentor must NOT upload documents
+[31m[1mAssertionError[22m: promise resolved "{ …(12) }" instead of rejecting[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- Error {[39m
+[32m-   "message": "rejected promise",[39m
+[31m+ {[39m
+[31m+   "createdAt": 2026-09-20T14:52:44.683Z,[39m
+[31m+   "id": "c8ad3a0b-bf43-4300-b292-f30eb2fd8932",[39m
+[31m+   "mimeDetected": "application/pdf",[39m
+[31m+   "originalFilename": "m.pdf",[39m
+[31m+   "ownerId": "9a88f0c4-a544-4fc4-be82-a390548fe9e6",[39m
+[31m+   "ownerKind": "team",[39m
+[31m+   "purpose": "other",[39m
+[31m+   "sha256": "186eba5c233dfae96e781f2ca694744eb0630f89bf3b6817b8818e19d615f6bf",[39m
+[31m+   "sizeBytes": 10,[39m
+[31m+   "status": "active",[39m
+[31m+   "teamId": "9a88f0c4-a544-4fc4-be82-a390548fe9e6",[39m
+[31m+   "uploadedBy": "df6287dd-7b01-4321-8383-a97dfc9a8959",[39m
+[2m  }[22m
+
+[36m [2m❯[22m src/integration/audit-probe.test.ts:[2m42:105[22m[39m
+    [90m 40|[39m   [34mit[39m([32m"B1: assigned mentor must NOT upload documents"[39m[33m,[39m [35masync[39m () [33m=>[39m {
+    [90m 41|[39m     await expect(uploadDocument(mentor, { ownerKind: "team", ownerId: …
+    [90m 42|[39m       file: { originalFilename: "m.pdf", mime: "application/pdf", byte…
+    [90m   |[39m                                                                                                         [31m^[39m
+    [90m 43|[39m       [33m.[39mrejects[33m.[39m[34mtoMatchObject[39m({ code[33m:[39m [32m"FORBIDDEN"[39m })[33m;[39m
+    [90m 44|[39m   })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/7]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/integration/audit-probe.test.ts[2m > [22mAUDIT PROBES (each should pass if the system is correct)[2m > [22mB2: assigned evaluator must NOT upload documents
+[31m[1mAssertionError[22m: promise resolved "{ …(12) }" instead of rejecting[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- Error {[39m
+[32m-   "message": "rejected promise",[39m
+[31m+ {[39m
+[31m+   "createdAt": 2026-09-20T14:52:44.689Z,[39m
+[31m+   "id": "affa476a-4e5f-426b-a29c-b247832f84fc",[39m
+[31m+   "mimeDetected": "application/pdf",[39m
+[31m+   "originalFilename": "e.pdf",[39m
+[31m+   "ownerId": "9a88f0c4-a544-4fc4-be82-a390548fe9e6",[39m
+[31m+   "ownerKind": "team",[39m
+[31m+   "purpose": "other",[39m
+[31m+   "sha256": "bd4b87dc6e005d37b2b777a5ddd05f0250a81b7c72c56f47e15325005d5e5371",[39m
+[31m+   "sizeBytes": 10,[39m
+[31m+   "status": "active",[39m
+[31m+   "teamId": "9a88f0c4-a544-4fc4-be82-a390548fe9e6",[39m
+[31m+   "uploadedBy": "ae7ada7d-3d43-4ce5-b1bb-eceff0b10f9e",[39m
+[2m  }[22m
+
+[36m [2m❯[22m src/integration/audit-probe.test.ts:[2m47:105[22m[39m
+    [90m 45|[39m   [34mit[39m([32m"B2: assigned evaluator must NOT upload documents"[39m[33m,[39m [35masync[39m () [33m=>[39m {
+    [90m 46|[39m     await expect(uploadDocument(evaluator, { ownerKind: "team", ownerI…
+    [90m 47|[39m       file: { originalFilename: "e.pdf", mime: "application/pdf", byte…
+    [90m   |[39m                                                                                                         [31m^[39m
+    [90m 48|[39m       [33m.[39mrejects[33m.[39m[34mtoMatchObject[39m({ code[33m:[39m [32m"FORBIDDEN"[39m })[33m;[39m
+    [90m 49|[39m   })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/7]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/integration/audit-probe.test.ts[2m > [22mAUDIT PROBES (each should pass if the system is correct)[2m > [22mC: a file declared as docx but not a zip/OOXML must be rejected
+[31m[1mAssertionError[22m: promise resolved "{ …(12) }" instead of rejecting[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- Error {[39m
+[32m-   "message": "rejected promise",[39m
+[31m+ {[39m
+[31m+   "createdAt": 2026-09-20T14:52:44.694Z,[39m
+[31m+   "id": "84ca2032-4799-42d8-bdae-5601e0e5e68f",[39m
+[31m+   "mimeDetected": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",[39m
+[31m+   "originalFilename": "x.docx",[39m
+[31m+   "ownerId": "9a88f0c4-a544-4fc4-be82-a390548fe9e6",[39m
+[31m+   "ownerKind": "team",[39m
+[31m+   "purpose": "other",[39m
+[31m+   "sha256": "5d5b9485d646b662f2b51a73141f626b981087ff795f15032a1c359faee3b74a",[39m
+[31m+   "sizeBytes": 31,[39m
+[31m+   "status": "active",[39m
+[31m+   "teamId": "9a88f0c4-a544-4fc4-be82-a390548fe9e6",[39m
+[31m+   "uploadedBy": "db753674-b8fc-423d-9680-c8489f64fcbc",[39m
+[2m  }[22m
+
+[36m [2m❯[22m src/integration/audit-probe.test.ts:[2m53:68[22m[39m
+    [90m 51|[39m     await expect(uploadDocument(leader, { ownerKind: "team", ownerId: …
+    [90m 52|[39m       file: { originalFilename: "x.docx", mime: "application/vnd.openx…
+    [90m 53|[39m         bytes: Buffer.from("<html><script>alert(1)</script>") } })).re…
+    [90m   |[39m                                                                    [31m^[39m
+    [90m 54|[39m   })[33m;[39m
+    [90m 55|[39m   it("D: assigned evaluator can view the team via resolveTeamScope + c…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/7]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/integration/audit-probe.test.ts[2m > [22mAUDIT PROBES (each should pass if the system is correct)[2m > [22mD: assigned evaluator can view the team via resolveTeamScope + can()
+[31m[1mAssertionError[22m: expected false to be true // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+[36m [2m❯[22m src/integration/audit-probe.test.ts:[2m57:55[22m[39m
+    [90m 55|[39m   it("D: assigned evaluator can view the team via resolveTeamScope + c…
+    [90m 56|[39m     [35mconst[39m ctx [33m=[39m [35mawait[39m [34mresolveTeamScope[39m(evaluator[33m,[39m team[33m.[39mid)[33m;[39m
+    [90m 57|[39m     [34mexpect[39m([34mcan[39m(evaluator[33m,[39m [33mPermissions[39m[33m.[39mteamView[33m,[39m ctx))[33m.[39m[34mtoBe[39m([35mtrue[39m)[33m;[39m
+    [90m   |[39m                                                       [31m^[39m
+    [90m 58|[39m   })[33m;[39m
+    [90m 59|[39m   it("E: a problem_creator must NOT review an arbitrary team's proposa…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/7]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/integration/audit-probe.test.ts[2m > [22mAUDIT PROBES (each should pass if the system is correct)[2m > [22mE: a problem_creator must NOT review an arbitrary team's proposal
+[31m[1mAssertionError[22m: expected true to be false // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- false[39m
+[31m+ true[39m
+
+[36m [2m❯[22m src/integration/audit-probe.test.ts:[2m61:59[22m[39m
+    [90m 59|[39m   it("E: a problem_creator must NOT review an arbitrary team's proposa…
+    [90m 60|[39m     [35mconst[39m ctx [33m=[39m [35mawait[39m [34mresolveTeamScope[39m(leader[33m,[39m team[33m.[39mid)[33m;[39m
+    [90m 61|[39m     [34mexpect[39m([34mcan[39m(creator[33m,[39m [33mPermissions[39m[33m.[39mproposalReview[33m,[39m ctx))[33m.[39m[34mtoBe[39m([35mfalse[39m)[33m;[39m
+    [90m   |[39m                                                           [31m^[39m
+    [90m 62|[39m   })[33m;[39m
+    [90m 63|[39m   it("F: uploads after a SUCCESSFUL final submission must be rejected"…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/7]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/integration/audit-probe.test.ts[2m > [22mAUDIT PROBES (each should pass if the system is correct)[2m > [22mF: uploads after a SUCCESSFUL final submission must be rejected
+[31m[1mAssertionError[22m: promise resolved "{ …(12) }" instead of rejecting[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- Error {[39m
+[32m-   "message": "rejected promise",[39m
+[31m+ {[39m
+[31m+   "createdAt": 2026-09-20T14:52:44.842Z,[39m
+[31m+   "id": "74af4b50-f231-4007-83ab-002f9155d823",[39m
+[31m+   "mimeDetected": "application/pdf",[39m
+[31m+   "originalFilename": "late.pdf",[39m
+[31m+   "ownerId": "6396cf97-f436-4ef7-8006-f3f74cd1c159",[39m
+[31m+   "ownerKind": "proposal",[39m
+[31m+   "purpose": "other",[39m
+[31m+   "sha256": "2c00ae4dac6b1ef29e7117a39f829701a501e44a9c38e8e748c0cc1f8455b609",[39m
+[31m+   "sizeBytes": 13,[39m
+[31m+   "status": "active",[39m
+[31m+   "teamId": "3951da33-2dd2-4989-bd82-839e1c39d317",[39m
+[31m+   "uploadedBy": "c6f5bd75-90c9-4219-926e-000da5ddba21",[39m
+[2m  }[22m
+
+[36m [2m❯[22m src/integration/audit-probe.test.ts:[2m77:111[22m[39m
+    [90m 75|[39m     [35mawait[39m [34msubmitProposal[39m(l2[33m,[39m pp[33m.[39mid)[33m;[39m [90m// must succeed[39m
+    [90m 76|[39m     await expect(uploadDocument(l2, { ownerKind: "proposal", ownerId: …
+    [90m 77|[39m       file: { originalFilename: "late.pdf", mime: "application/pdf", b…
+    [90m   |[39m                                                                                                               [31m^[39m
+    [90m 78|[39m       [33m.[39mrejects[33m.[39m[34mtoBeTruthy[39m()[33m;[39m
+    [90m 79|[39m   })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/7]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m7 failed[39m[22m[90m (7)[39m
+[2m   Start at [22m 14:52:43
+[2m   Duration [22m 1.11s[2m (transform 196ms, setup 22ms, import 293ms, tests 653ms, environment 0ms)[22m
+
