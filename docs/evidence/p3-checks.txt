@@ -1,0 +1,59 @@
+# P3 check evidence — 2026-09-20 (sandbox)
+Auth + authorisation core: central can(), route-policy registry, scrypt, hashed
+single-use tokens, CSRF, trusted-proxy IP, sessions, login/lockout, DB rate
+limiter, email-verify, password-reset, append-only audit.
+
+## 1. Typecheck
+    $ npx tsc --noEmit
+    → exit 0 (no output)
+
+## 2. Lint
+    $ npm run lint
+    → exit 0, "✖ 0 problems" (no warnings)
+
+## 3. Unit tests (fast, no DB)
+    $ npx vitest run
+    → Test Files  7 passed (7)
+    → Tests       34 passed (34)
+      permissions 10, route-inventory 5, password 5, tokens 2, csrf 6, ip 5, smoke 1
+
+## 4. Integration tests (real Postgres 17, throwaway schema, committed migrations)
+    $ npx vitest run --config vitest.int.config.ts
+    → Test Files  2 passed (2)
+    → Tests       22 passed (22)
+      schema.test.ts 10 (P2 constraints)
+      auth.test.ts 12:
+        - S9 sessions: create/resolve by hash only; revoked + expired rejected;
+          revokeAllSessions kills 2/2; rotateSessions invalidates old token
+        - S7 login: success → session; unknown email vs wrong password →
+          IDENTICAL result (non-enumerating, dummy scrypt on unknown);
+          5 failures → locked_until ~15 min in future, correct password
+          rejected while locked, works after window; per-IP rate limit →
+          rate_limited on 11th call/60 s
+        - S8 limiter: at TRUSTED_PROXY_COUNT=0, rotated fake XFF values all
+          derive to the socket address and share ONE bucket; 6th call rejected
+          with retryAfterSec > 0
+        - S7 email verify: user unverified before, verified after; token
+          single-use (replay → invalid); expired → invalid
+        - S7 password reset: weak password rejected; confirm changes password,
+          REVOKES ALL ACTIVE SESSIONS, old pw dead / new pw works, token
+          single-use; unknown email issues no token (response identical)
+
+## 5. Production build
+    $ npm run build
+    → exit 0 ("Compiled successfully", static prerender OK)
+
+## 6. Schema drift
+    $ npx drizzle-kit generate
+    → "No schema changes" (drizzle/0000_init.sql in sync)
+
+## Notes / caveats
+- Sandbox Postgres uses loopback `trust` (sandbox only; production = SCRAM,
+  real credentials via secrets — see PROVIDER_RESEARCH.md §9).
+- TRUSTED_PROXY_COUNT defaults to 0: without a trusted proxy, client IP is
+  always the socket address and x-forwarded-for is IGNORED (proven in §4).
+  Behind Caddy on the VM, set TRUSTED_PROXY_COUNT=1 (single hop).
+- Session cookie attributes (HttpOnly, Secure, SameSite=Strict, Path=/) are
+  enforced in the route layer in P4; the session store itself is proven here.
+- CSRF guard (csrf.ts) unit-tested in §3; wired into mutating routes in P4.
+- UNVERIFIED: nothing in this phase depends on external providers.
