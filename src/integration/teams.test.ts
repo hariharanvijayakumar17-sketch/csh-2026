@@ -6,11 +6,13 @@ import {
   createTeam,
   inviteMember,
   acceptInvite,
+  declineInvite,
   removeMember,
   withdrawTeam,
   setTeamProblems,
   getTeam,
 } from "@/lib/teams";
+import { can, Permissions } from "@/lib/authz/permissions";
 import {
   bootDb,
   email,
@@ -65,6 +67,54 @@ describe("P5 team lifecycle + composition rules", () => {
     await expect(createTeam(u, { name: "Team Two" })).rejects.toMatchObject({
       code: "CONFLICT",
     });
+  });
+
+
+  it("F1: invited-but-not-accepted is NOT a member (no visibility, not blocked, auto-decline)", async () => {
+    const inst = await makeInstitution(t.db);
+    const leader = await makeUser(t.db, { prefix: "f1l", institutionId: inst, gender: "male" });
+    const invitee = await makeUser(t.db, { prefix: "f1i", institutionId: inst, gender: "female" });
+    const team = await createTeam(leader, { name: "F1 Probe Team" });
+    await inviteMember(leader, team.id, { email: invitee.email! });
+    // 1) invited user cannot VIEW the team
+    await expect(getTeam(invitee, team.id), "invited user must not read team").rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    // 2) invited user is NOT blocked from forming their own team
+    const own = await createTeam(invitee, { name: "My Own Team" });
+    expect(own.id).not.toEqual(team.id);
+    // 3) the stale pending invite was auto-declined
+    const row = await t.raw`SELECT status FROM team_members WHERE team_id = ${team.id} AND user_id = ${invitee.id}`;
+    expect(row[0].status).toBe("declined");
+    // 4) explicit decline works once, then NOT_FOUND (fresh invitee — the first
+    //    one now has an accepted team and would correctly be CONFLICT)
+    const decliner = await makeUser(t.db, { prefix: "f1d", institutionId: inst, gender: "female" });
+    const l3 = await makeUser(t.db, { prefix: "f1l3", institutionId: inst, gender: "male" });
+    const t3 = await createTeam(l3, { name: "F1 Decline Team" });
+    await inviteMember(l3, t3.id, { email: decliner.email! });
+    await declineInvite(decliner, t3.id);
+    await expect(declineInvite(decliner, t3.id), "second decline -> NOT_FOUND").rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+    // 5) can(teamView) is false for the invited-only user (probe D sibling)
+    const scope = {
+      team: { id: team.id, institutionId: inst, leaderUserId: leader.id },
+      teamLeaderUserId: leader.id,
+      ownTeamIds: new Set<string>(),
+      institutionId: inst,
+      mentorAssignedTeamIds: new Set<string>(),
+      evaluatorAssignedTeamIds: new Set<string>(),
+    };
+    expect(can(invitee, Permissions.teamView, scope)).toBe(false);
+  });
+
+  it("F1: a user whose only team is withdrawn can form a new team", async () => {
+    const inst = await makeInstitution(t.db);
+    const u = await makeUser(t.db, { prefix: "f1w", institutionId: inst, gender: "male" });
+    const t1 = await createTeam(u, { name: "Doomed Team" });
+    await withdrawTeam(u, t1.id);
+    const t2 = await createTeam(u, { name: "Fresh Team" });
+    expect(t2.id).not.toEqual(t1.id);
   });
 
   it("invite: leader only, same institution, cap from settings (max 6)", async () => {

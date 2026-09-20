@@ -211,6 +211,14 @@ describe("S1 central authorisation: can(user, permission, ctx)", () => {
     expect(can(participantAsSpoc(), Permissions.spocViewTeams, {})).toBe(false);
   });
 
+  it("F1: invite accept/decline are the invitee's self-actions only", () => {
+    expect(can(leader, Permissions.teamAcceptInvite)).toBe(true);
+    expect(can(member, Permissions.teamDeclineInvite)).toBe(true);
+    expect(can(spocA, Permissions.teamAcceptInvite)).toBe(false);
+    expect(can(evaluator, Permissions.teamDeclineInvite)).toBe(false);
+    expect(can(creator, Permissions.teamAcceptInvite)).toBe(false);
+  });
+
   it("admin has everything; unauthenticated user has nothing", () => {
     const perms = Object.values(Permissions);
     for (const p of perms) expect(can(admin, p, ctxLeaderOwn)).toBe(true);

@@ -36,6 +36,7 @@ export const teamMemberStatus = pgEnum("team_member_status", [
   "accepted",
   "removed",
   "withdrawn",
+  "declined",
 ]);
 
 export const teams = pgTable(

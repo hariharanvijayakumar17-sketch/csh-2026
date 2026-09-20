@@ -18,6 +18,8 @@ export const Permissions = {
   teamInvite: "team.invite_member",
   teamRemoveMember: "team.remove_member",
   teamWithdraw: "team.withdraw",
+  teamAcceptInvite: "team.accept_invite", // invitee self; service validates pending row (F1)
+  teamDeclineInvite: "team.decline_invite", // invitee self; service validates pending row (F1)
   teamVerify: "team.verify", // SPOC own institution
   teamShortlist: "team.shortlist", // SPOC own institution
   teamUploadDocument: "team.upload_document", // own team (or SPOC own inst, letter)
@@ -156,6 +158,11 @@ export function can(
       // participant: only own team (leader or member)
       return ctx.ownTeamIds?.has(ctx.team.id) ?? false;
     }
+
+    case Permissions.teamAcceptInvite:
+    case Permissions.teamDeclineInvite:
+      // self action: the invitee; the SERVICE validates the pending row
+      return user.role === "participant";
 
     case Permissions.teamUpdate:
     case Permissions.teamInvite:

@@ -82,10 +82,11 @@ async function loadTeam(teamId: string) {
 }
 
 async function ownTeamIds(userId: string): Promise<Set<string>> {
+  // F1: accepted membership in a live team only (invited rows grant nothing)
   const rows = await db
     .select({ teamId: teamMembers.teamId })
     .from(teamMembers)
-    .where(and(eq(teamMembers.userId, userId), inArray(teamMembers.status, ["invited", "accepted"])));
+    .where(and(eq(teamMembers.userId, userId), eq(teamMembers.status, "accepted")));
   return new Set(rows.map((r) => r.teamId));
 }
 

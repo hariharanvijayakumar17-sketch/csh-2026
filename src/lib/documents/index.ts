@@ -106,11 +106,14 @@ async function resolveDocTeam(ownerKind: "team" | "proposal", ownerId: string): 
   return null;
 }
 
+/** F1: ACCEPTED membership in a live team only (invited rows grant nothing;
+ *  duplicate of the teams-service rule — documents cannot import teams,
+ *  which imports documents). */
 async function ownTeamIds(userId: string): Promise<Set<string>> {
   const rows = await db
     .select({ teamId: teamMembers.teamId })
     .from(teamMembers)
-    .where(and(eq(teamMembers.userId, userId), inArray(teamMembers.status, ["invited", "accepted"])));
+    .where(and(eq(teamMembers.userId, userId), eq(teamMembers.status, "accepted")));
   return new Set(rows.map((r) => r.teamId));
 }
 

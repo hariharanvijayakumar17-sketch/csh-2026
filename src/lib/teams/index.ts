@@ -26,7 +26,7 @@ export interface TeamMemberDTO {
   fullName: string;
   gender: string | null;
   role: "leader" | "member";
-  status: "invited" | "accepted" | "removed" | "withdrawn";
+  status: "invited" | "accepted" | "removed" | "withdrawn" | "declined";
   acceptedAt: Date | null;
 }
 
@@ -61,14 +61,57 @@ async function loadTeamOr404(teamId: string) {
   return rows[0];
 }
 
-async function ownTeamIds(userId: string): Promise<Set<string>> {
+/**
+ * F1: membership for EVERY permission check = ACCEPTED rows in a team that
+ * is not withdrawn/rejected. Invited-but-not-accepted rows grant NOTHING
+ * (probe A); stale invites and withdrawn teams never block a person
+ * (probe F1 rule). Invited-only lookups live in pendingInvite/declineInvite.
+ */
+export async function activeMembershipTeamIds(userId: string): Promise<Set<string>> {
   const rows = await db
     .select({ teamId: teamMembers.teamId })
     .from(teamMembers)
+    .innerJoin(teams, eq(teamMembers.teamId, teams.id))
     .where(
-      and(eq(teamMembers.userId, userId), inArray(teamMembers.status, ["invited", "accepted"]))
+      and(
+        eq(teamMembers.userId, userId),
+        eq(teamMembers.status, "accepted"),
+        inArray(teams.status, ["draft", "pending_verification", "verified", "shortlisted", "finalist", "winner"])
+      )
     );
   return new Set(rows.map((r) => r.teamId));
+}
+
+async function ownTeamIds(userId: string): Promise<Set<string>> {
+  return activeMembershipTeamIds(userId);
+}
+
+async function isAcceptedMember(userId: string, teamId: string): Promise<boolean> {
+  const r = await db
+    .select({ x: teamMembers.id })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId), eq(teamMembers.status, "accepted")))
+    .limit(1);
+  return r.length > 0;
+}
+
+/** Pending (not yet accepted/declined) invitation rows for a user. */
+async function pendingInviteRows(userId: string) {
+  return db
+    .select({ teamId: teamMembers.teamId })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.userId, userId), eq(teamMembers.status, "invited")));
+}
+
+async function declineStaleInvites(userId: string, keepTeamId?: string) {
+  const rows = await pendingInviteRows(userId);
+  for (const r of rows) {
+    if (r.teamId === keepTeamId) continue;
+    await db
+      .update(teamMembers)
+      .set({ status: "declined" })
+      .where(and(eq(teamMembers.teamId, r.teamId), eq(teamMembers.userId, userId), eq(teamMembers.status, "invited")));
+  }
 }
 
 function requireCan(user: UserLike, permission: Parameters<typeof can>[1], team: { id: string; leaderUserId: string; institutionId: string }) {
@@ -89,7 +132,9 @@ function assertDraft(team: { status: string }, what: string) {
  * layer is a second, not the only, gate. */
 export async function resolveTeamScope(user: UserLike, teamId: string): Promise<CanContext> {
   const team = await loadTeamOr404(teamId);
-  const own = await ownTeamIds(user.id);
+  // F1: per-team ACCEPTED membership for the scope (invited rows grant nothing;
+  // withdrawn teams remain visible to their members)
+  const memberOk = await isAcceptedMember(user.id, teamId);
   let mentorAssignedTeamIds: Set<string> | undefined;
   if (user.role === "mentor") {
     const rows = await db
@@ -98,7 +143,7 @@ export async function resolveTeamScope(user: UserLike, teamId: string): Promise<
       .where(eq(mentorships.mentorUserId, user.id));
     mentorAssignedTeamIds = new Set(rows.map((r) => r.teamId));
   }
-  return { team, ownTeamIds: own, mentorAssignedTeamIds };
+  return { team, ownTeamIds: memberOk ? new Set<string>([teamId]) : new Set<string>(), mentorAssignedTeamIds };
 }
 
 export async function createTeam(
@@ -126,6 +171,8 @@ export async function createTeam(
   if (existing.size > 0) {
     throw new ApiError("CONFLICT", "You are already part of a team (one team per person)");
   }
+  // F1: forming a team auto-declines stale pending invitations
+  await declineStaleInvites(user.id);
 
   const dup = await db
     .select({ id: teams.id })
@@ -219,7 +266,7 @@ export async function inviteMember(
     .limit(1);
   if (already.length > 0) throw new ApiError("CONFLICT", "This member is already on the team");
 
-  // one-team-per-person at the point of invitation too
+  // one-team-per-person at the point of invitation too (ACCEPTED only — F1)
   const busy = await ownTeamIds(invitee.id);
   if (busy.size > 0) {
     throw new ApiError("CONFLICT", "That user is already part of another team");
@@ -266,7 +313,26 @@ export async function acceptInvite(user: UserLike, teamId: string): Promise<Team
     .update(teamMembers)
     .set({ status: "accepted", acceptedAt: new Date() })
     .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, user.id), eq(teamMembers.status, "invited")));
+  // F1: accepting here declines every other pending invitation
+  await declineStaleInvites(user.id, teamId);
   return getTeam(user, teamId);
+}
+
+/** F1: the invitee declines a pending invitation (the invitee's own team
+ *  stays blocked-free because invited rows never count as membership). */
+export async function declineInvite(user: UserLike, teamId: string): Promise<void> {
+  const member = await db
+    .select({ id: teamMembers.id })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, user.id), eq(teamMembers.status, "invited")))
+    .limit(1);
+  if (member.length === 0) {
+    throw new ApiError("NOT_FOUND", "No pending invitation for you on this team");
+  }
+  await db
+    .update(teamMembers)
+    .set({ status: "declined" })
+    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, user.id), eq(teamMembers.status, "invited")));
 }
 
 export async function removeMember(
@@ -333,10 +399,12 @@ export async function setTeamProblems(
 
 export async function getTeam(user: UserLike, teamId: string): Promise<TeamDTO> {
   const team = await loadTeamOr404(teamId);
-  const own = await ownTeamIds(user.id);
+  // F1: per-team ACCEPTED membership (invited rows grant nothing; withdrawn
+  // teams stay visible to their members — uploads are locked by state gates)
+  const memberOk = await isAcceptedMember(user.id, teamId);
   const ctx = {
     team,
-    ownTeamIds: own,
+    ownTeamIds: memberOk ? new Set<string>([teamId]) : new Set<string>(),
     mentorAssignedTeamIds: undefined,
     evaluatorAssignedTeamIds: undefined,
   };

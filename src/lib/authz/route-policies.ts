@@ -113,7 +113,10 @@ export const ROUTE_POLICIES: Record<string, RouteEntry[]> = {
     POST(Permissions.teamUploadDocument, "own team or SPOC own inst (letter); S2/S10"),
   ],
   "/api/v1/teams/:id/accept": [
-    POST(Permissions.teamView, "invited user accepts; service validates pending invite + same institution"),
+    POST(Permissions.teamAcceptInvite, "F1: invited user accepts; service validates pending invite + same institution"),
+  ],
+  "/api/v1/teams/:id/decline": [
+    POST(Permissions.teamDeclineInvite, "F1: invited user declines (declines the pending row)"),
   ],
   "/api/v1/teams/:id/proposals": [
     POST(Permissions.proposalCreate, "leader of own team (team scope from URL)"),
