@@ -16,6 +16,24 @@ import { ApiError, fail, ok } from "./error";
 
 export const SESSION_COOKIE = "csh_session";
 
+/**
+ * F10: URL params are validated BEFORE authentication/authorisation.
+ * Every P5 route param is a UUID; a malformed one must produce a 400
+ * envelope immediately — not a 200-with-error, not 401/403 (those would
+ * depend on auth state and leak that ordering into the response).
+ * Returns the first offending param key, or null when all string params
+ * are valid UUIDs.
+ */
+export const UUID_PARAM_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function uuidParamError(params: Record<string, unknown> | null | undefined): string | null {
+  for (const [key, value] of Object.entries(params ?? {})) {
+    if (typeof value === "string" && !UUID_PARAM_RE.test(value)) return key;
+  }
+  return null;
+}
+
 export function sessionCookieOptions(): {
   httpOnly: boolean;
   sameSite: "strict";
@@ -94,7 +112,16 @@ export function makeRouteHandler<TParams extends { id?: string }>(
   deps: RouteDeps<TParams>
 ): (req: NextRequest, ctx: { params: Promise<TParams> }) => Promise<Response> {
   return async (req, ctx) => {
-    const params = await ctx.params;
+    const params = (await ctx.params) ?? ({} as TParams);
+    // F10: parameter validation FIRST — before session resolution and
+    // authorisation. Invalid id → 400 envelope, uniformly, for everyone.
+    const badParam = uuidParamError(params as Record<string, unknown>);
+    if (badParam) {
+      return fail(
+        new ApiError("BAD_REQUEST", `Invalid UUID in URL parameter '${badParam}'`),
+        (req?.headers.get("x-request-id") as string | null) ?? randomUUID()
+      );
+    }
     const call = await getCaller(req);
     try {
       if (deps.permission) {

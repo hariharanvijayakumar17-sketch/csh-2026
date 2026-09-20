@@ -93,7 +93,7 @@ export const ROUTE_POLICIES: Record<string, RouteEntry[]> = {
   "/api/v1/teams": [
     POST(Permissions.teamCreate, "participant self; composition rules from settings"),
   ],
-  "/api/v1/teams/mine": [P(Permissions.teamView, "own teams (service scopes)")],
+  "/api/v1/teams/mine": [P(Permissions.teamListMine, "authenticated self-list; service scopes by role (F10 fix: team.view 403d on empty ctx)")],
   "/api/v1/teams/:id": [
     P(Permissions.teamView, "own team / SPOC own inst / assigned mentor-evaluator / admin"),
     PATCH(Permissions.teamUpdate, "leader of own team, draft state"),

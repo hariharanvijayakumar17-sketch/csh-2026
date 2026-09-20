@@ -20,6 +20,7 @@ export const Permissions = {
   teamWithdraw: "team.withdraw",
   teamAcceptInvite: "team.accept_invite", // invitee self; service validates pending row (F1)
   teamDeclineInvite: "team.decline_invite", // invitee self; service validates pending row (F1)
+  teamListMine: "team.list_mine", // self-list; the SERVICE scopes by role (F10: was team.view on empty ctx => 403 for everyone)
   teamVerify: "team.verify", // SPOC own institution
   teamShortlist: "team.shortlist", // SPOC own institution
   teamUploadDocument: "team.upload_document",
@@ -164,6 +165,11 @@ export function can(
     case Permissions.teamDeclineInvite:
       // self action: the invitee; the SERVICE validates the pending row
       return user.role === "participant";
+    case Permissions.teamListMine:
+      // authenticated self-list: the service scopes (participant: own teams;
+      // mentor: assigned; others: nothing). team.view would 403 here because
+      // the route carries no team context.
+      return true;
 
     case Permissions.teamUpdate:
     case Permissions.teamInvite:

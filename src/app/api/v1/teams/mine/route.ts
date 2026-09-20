@@ -5,7 +5,7 @@ import { listMyTeams } from "@/lib/teams";
 export const runtime = "nodejs";
 
 export const GET = makeRouteHandler({
-  permission: "team.view",
+  permission: "team.list_mine",
   handler: async (_req, _params, call) => {
     const teams = await listMyTeams(call.user!);
     return ok({ teams }, call.requestId);

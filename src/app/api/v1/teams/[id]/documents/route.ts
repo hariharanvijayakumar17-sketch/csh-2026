@@ -6,8 +6,6 @@ import { listTeamDocuments, uploadDocument } from "@/lib/documents";
 
 export const runtime = "nodejs";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 export const GET = makeRouteHandler<{ id: string }>({
   permission: "document.view",
   resolveCtx: (call, params) =>
@@ -29,7 +27,7 @@ export const POST = makeRouteHandler<{ id: string }>({
       Object.assign(call.ctx, { document: { ownerKind: "team", ownerId: params.id, teamId: params.id } });
     }),
   handler: async (req, params, call) => {
-    if (!UUID_RE.test(params.id)) return ok({ error: "bad id" }, call.requestId);
+    // F10: UUID param validation happens in makeRouteHandler (before auth)
     const fd = await req.formData().catch(() => null);
     if (!fd) {
       return Response.json(
