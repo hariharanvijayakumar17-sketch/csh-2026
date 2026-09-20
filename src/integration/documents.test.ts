@@ -7,8 +7,10 @@ import {
   evaluations,
 } from "@/lib/db/schema";
 import { uploadDocument, getDocument, listTeamDocuments } from "@/lib/documents";
-import { createTeam, inviteMember, acceptInvite } from "@/lib/teams";
+import { createTeam, inviteMember, acceptInvite, setTeamProblems, withdrawTeam } from "@/lib/teams";
 import { createProposal, updateProposalDraft, submitProposal } from "@/lib/proposals";
+import { setSetting } from "@/lib/settings";
+import { auditLog, proposals } from "@/lib/db/schema";
 import {
   bootDb,
   makeActiveRound,
@@ -134,9 +136,15 @@ describe("P5 documents — S2 ACL matrix", () => {
   });
 
   it("ACL: proposal-owned documents resolve through the owning team", async () => {
+    // F6: proposal documents freeze after submission — the ACL upload uses a
+    // DRAFT proposal (proposalA was submitted in beforeAll)
+    const aclProblem = await makeProblem(t.db);
+    await setTeamProblems(leaderA, teamA.id, [aclProblem.id]);
+    const aclRound = await makeActiveRound(t.db); // one proposal per team per round
+    const draftP = await createProposal(leaderA, { teamId: teamA.id, problemId: aclProblem.id, roundId: aclRound, title: "Draft for docs" });
     const doc = await uploadDocument(leaderA, {
       ownerKind: "proposal",
-      ownerId: proposalA.id,
+      ownerId: draftP.id,
       purpose: "proposal_presentation",
       file: sampleFile("slides.pdf"),
     });
@@ -287,6 +295,54 @@ describe("P5 documents — S2 ACL matrix", () => {
       file: { originalFilename: "lie.zip", mime: "application/zip", bytes: pdf("lie") },
     });
     expect(lie.mimeDetected).toBe("application/pdf");
+  });
+
+
+  it("F6: uploads locked after submission / withdrawn team; deadline enforced; admin override audited", async () => {
+    const pdf = (tag: string) => Buffer.from(`%PDF-1.4 ${tag}`);
+    const file = (b: Buffer, name = "f.pdf") => ({ originalFilename: name, mime: "application/pdf", bytes: b });
+
+    const roundId = await makeActiveRound(t.db);
+    const problem = await makeProblem(t.db);
+    await setTeamProblems(leaderA, teamA.id, [problem.id]);
+    const p = await createProposal(leaderA, { teamId: teamA.id, problemId: problem.id, roundId, title: "F6" });
+    await updateProposalDraft(leaderA, p.id, { title: "F6", solution: "s" });
+    // before submission: uploads are fine
+    await uploadDocument(leaderA, { ownerKind: "team", ownerId: teamA.id, purpose: "other", file: file(pdf("pre")) });
+    await submitProposal(leaderA, p.id);
+    // after final submission: proposal-owned uploads LOCKED (probe F); team-level
+    // documents stay manageable (the probe suite's own contract)
+    await expect(
+      uploadDocument(leaderA, { ownerKind: "proposal", ownerId: p.id, purpose: "other", file: file(pdf("b")) })
+    ).rejects.toMatchObject({ code: "LOCKED" });
+    await uploadDocument(leaderA, { ownerKind: "team", ownerId: teamA.id, purpose: "other", file: file(pdf("team-level")) });
+    // changes_requested: unlocked again
+    await t.db.update(proposals).set({ status: "changes_requested" }).where(eq(proposals.id, p.id));
+    const rev = await uploadDocument(leaderA, { ownerKind: "proposal", ownerId: p.id, purpose: "project_report", file: file(pdf("rev")) });
+    expect(rev.purpose).toBe("project_report");
+
+    // deadline gate (team B has no submissions)
+    await setSetting("document.upload_deadline", new Date(Date.now() - 60_000).toISOString());
+    await expect(
+      uploadDocument(memberB, { ownerKind: "team", ownerId: teamB.id, purpose: "other", file: file(pdf("late")) })
+    ).rejects.toMatchObject({ code: "DEADLINE_PASSED" });
+    await setSetting("document.upload_deadline", new Date(Date.now() + 3_600_000).toISOString());
+    await uploadDocument(memberB, { ownerKind: "team", ownerId: teamB.id, purpose: "other", file: file(pdf("ok")) });
+    await setSetting("document.upload_deadline", ""); // reset: no deadline
+
+    // withdrawn team: LOCKED for members, super_admin overrides WITH an audit row
+    const instC = await makeInstitution(t.db);
+    const lc = await makeUser(t.db, { prefix: "f6c", institutionId: instC, gender: "male" });
+    const tc = await createTeam(lc, { name: "F6 Doom Team" });
+    await withdrawTeam(lc, tc.id);
+    await expect(
+      uploadDocument(lc, { ownerKind: "team", ownerId: tc.id, purpose: "other", file: file(pdf("w")) })
+    ).rejects.toMatchObject({ code: "LOCKED" });
+    const admin = await makeUser(t.db, { prefix: "f6adm", role: "super_admin" });
+    const aDoc = await uploadDocument(admin, { ownerKind: "team", ownerId: tc.id, purpose: "other", file: file(pdf("admin")) });
+    expect(aDoc.id).toBeTruthy();
+    const rows = await t.raw`SELECT action FROM audit_log WHERE entity_kind = 'team' AND entity_id = ${tc.id} AND action = 'document.upload_override'`;
+    expect(rows).toHaveLength(1);
   });
 
 });

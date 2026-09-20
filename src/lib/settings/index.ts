@@ -51,6 +51,11 @@ export const DEFAULT_SETTINGS: Record<string, { value: unknown; description: str
     value: 10485760,
     description: "Max upload size in bytes (10 MiB default; P5 documents).",
   },
+  "document.upload_deadline": {
+    value: "",
+    description:
+      "F6: ISO-8601 deadline after which document uploads are rejected (DEADLINE_PASSED). '' (empty) = no deadline. (settings.value is NOT NULL, so empty string is the sentinel)",
+  },
 };
 
 const CACHE_TTL_MS = 60_000;

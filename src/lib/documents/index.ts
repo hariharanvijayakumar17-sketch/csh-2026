@@ -2,16 +2,17 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import {
+  auditLog,
   documents,
   proposals,
   teamMembers,
   teams,
 } from "../db/schema";
 import { can, Permissions, type CanContext, type UserLike } from "../authz/permissions";
-import { getNumberSetting } from "../settings";
+import { getNumberSetting, getSetting } from "../settings";
 import { ApiError } from "../http/error";
 import { detectContent } from "./content-detect";
 import { evaluatorAssignedTeamIds as loadEvaluatorSets, mentorAssignedTeamIds as loadMentorSets } from "../authz/assigned-teams";
@@ -158,6 +159,55 @@ export async function resolveDocumentScope(
   return docCtx(caller, { ownerKind, ownerId: doc.ownerId, teamId }, doc.purpose as string | undefined);
 }
 
+/**
+ * F6: upload state/deadline gates.
+ *  - team withdrawn/rejected                       -> LOCKED
+ *  - proposal-owned doc, proposal not draft / changes_requested -> LOCKED
+ *  - document.upload_deadline (ISO) in the past     -> DEADLINE_PASSED
+ * Returns null when uploads are allowed. super_admin bypass is handled by
+ * the caller (with an audit row) — this helper only evaluates the gates.
+ */
+async function uploadGates(
+  teamId: string,
+  input: { ownerKind: "team" | "proposal"; ownerId: string }
+): Promise<{ code: "LOCKED" | "DEADLINE_PASSED"; message: string } | null> {
+  const [teamRow] = await db
+    .select({ status: teams.status })
+    .from(teams)
+    .where(eq(teams.id, teamId))
+    .limit(1);
+  if (!teamRow) return null;
+  if (teamRow.status === "withdrawn" || teamRow.status === "rejected") {
+    return { code: "LOCKED", message: "Team is withdrawn/rejected — document uploads are locked" };
+  }
+  // Proposal-owned documents follow the PROPOSAL's state: once submitted
+  // (anything beyond draft / changes_requested) the proposal's documents are
+  // frozen. Team-level documents (consent forms, letters, reports) stay
+  // manageable — the probe suite itself uploads team documents after a
+  // submission, so locking those would break the documented contract.
+  if (input.ownerKind === "proposal") {
+    const [p] = await db
+      .select({ status: proposals.status })
+      .from(proposals)
+      .where(and(eq(proposals.id, input.ownerId), isNull(proposals.deletedAt)))
+      .limit(1);
+    if (p && p.status !== "draft" && p.status !== "changes_requested") {
+      return {
+        code: "LOCKED",
+        message: "Proposal is submitted (only draft / changes-requested accept documents)",
+      };
+    }
+  }
+  const deadline = await getSetting<string>("document.upload_deadline");
+  if (typeof deadline === "string" && deadline.length > 0) {
+    const t = Date.parse(deadline);
+    if (Number.isFinite(t) && Date.now() > t) {
+      return { code: "DEADLINE_PASSED", message: "The document upload deadline has passed (settings document.upload_deadline)" };
+    }
+  }
+  return null;
+}
+
 export async function uploadDocument(
   caller: UserLike,
   input: {
@@ -190,6 +240,23 @@ export async function uploadDocument(
   if (!originalFilename || originalFilename.length > 255) {
     throw new ApiError("BAD_REQUEST", "Invalid filename");
   }
+  // F6: state/deadline gates (probe F). super_admin may override — with an
+  // audit row recording exactly which gate was bypassed.
+  const gate = await uploadGates(teamId, input);
+  if (gate) {
+    if (caller.role === "super_admin") {
+      await db.insert(auditLog).values({
+        actorUserId: caller.id,
+        action: "document.upload_override",
+        entityKind: input.ownerKind,
+        entityId: input.ownerId,
+        metadata: { gate: gate.code, purpose: input.purpose },
+      });
+    } else {
+      throw new ApiError(gate.code, gate.message);
+    }
+  }
+
   const maxBytes = await getNumberSetting("document.max_bytes", 10 * 1024 * 1024);
   if (bytes.length === 0) throw new ApiError("BAD_REQUEST", "Empty file");
   if (bytes.length > maxBytes) {
