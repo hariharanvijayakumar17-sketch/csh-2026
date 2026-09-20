@@ -1,29 +1,30 @@
 # CSH 2026 — PROGRESS (updated 2026-09-20, session 1)
 
 ## Completed
-- P0: capability audit, Postgres 17.11 local, Next.js 15.5.25 scaffold, tooling (Vitest unit+int, Playwright desktop+mobile, Drizzle, Zod, tsx), .env.example, evidence for lint/typecheck/vitest/e2e/build — ALL PASSED (docs/evidence/*)
-- P1 research (all in repo, sources + dates cited):
-  - SIH_FINDINGS.md (sih.gov.in 403s bots → official-mirror sources, marked secondary; numbers table incl. 50/institute, 500/PS, 2 PS/team, 6 members, letterhead letter)
-  - DPDP_NOTES.md (Rules 2025 notified 2025-11-13; phased: DPB now, consent managers 2026-11-13, full fiduciary duties 2027-05-13; 6 college/legal decision items listed)
-  - PROVIDER_RESEARCH.md (Vercel/Render/Railway/Neon/Oracle/Cloudflare/Resend from first-party pages; capacity table; PRIMARY = always-on India VM (OCI Always Free or college IT), FALLBACK = Cloudflare edge stack; email burst cap flagged with mitigations)
-  - DECISIONS.md D4 resolved (primary/fallback/upgrade paths)
+- **P0** audit, Postgres 17.11, Next.js 15.5.25 scaffold, tooling (Vitest unit+int, Playwright d+m, Drizzle, Zod, tsx), .env.example, evidence — all green
+- **P1** research: SIH_FINDINGS.md, DPDP_NOTES.md, PROVIDER_RESEARCH.md (first-party pricing/terms, 2026-09-20), DECISIONS D4 resolved (primary: India always-on VM — OCI Always Free or college IT; fallback: Cloudflare edge)
+- **GitHub gate CLEARED**: deployment key approved by user; push verified (e6a8434 → main; e369dc9/e6a8434 era). Remote: hariharanvijayakumar17-sketch/csh-2026 (contained only a 1-line README — no prior project, from-scratch build continues)
+- **P2** schema v1 + committed migration `drizzle/0000_init.sql`:
+  - 29 tables (identity, teams, problems/rounds/criteria/proposals/immutable versions, evaluations/scores/results/certificates, system: settings, flags, announcements, notifications, email queue, append-only audit, CMS, import/export jobs, rate-limit buckets)
+  - UUID PKs, FKs with explicit ON DELETE, unique + check constraints, lower() unique indexes, FTS tsvector+GIN+sync trigger, DB triggers making audit_log & status_histories append-only
+  - **Integration proof: 10/10 PASS on real Postgres 17** (docs/evidence/p2-checks.txt)
+  - Full checks green: lint 0/0, typecheck, unit 1/1, integration 10/10, prod build
 
 ## Current
-Done for this increment. Next is P2 (schema + migrations) — pure code, no human dependency.
+Starting **P3**: auth (scrypt, hashed single-use tokens, session rotation, lockout, non-enumerating), central `can(user, action, resource)` authorisation, trusted-IP rate limiting, audit writer, and the route-inventory + permission-matrix tests (failing tests FIRST, per brief §6).
 
 ## Blocked
-- **GitHub push: NO CREDENTIALS in sandbox** (no gh, no token in env, no .git-credentials/.netrc, no connector; anonymous read works). Human-only action — consolidated request sent in chat: create private repo `csh-2026` + add sandbox ed25519 public key (shown in chat) as a WRITE deployment key, or supply a fine-grained PAT through the platform's env/secret mechanism (never paste into chat). All commits meanwhile live in /home/user/csh-2026 only.
-- If `csh-2026` already contains a project on GitHub, say so — we will fetch, list, and HARDEN instead of rebuild.
-- Later gates (not asked yet, consolidated at P13): OCI account (card question) / college IT server + base domain + SMTP; one-month Resend Pro OK-or-not; DPDP officer name/retention sign-off.
+- None hard. (Deployment/college/DPDP gates consolidated later at P13 — see DPDP_NOTES.md §"Decisions needing college or legal approval".)
 
 ## Known issues
-- npm audit: 6 vulns (5 moderate, 1 high) dominated by next→postcss ecosystem advisory (docs/evidence/p0-npm-audit.txt). Re-check each release; bump next as soon as patched.
-- Sandbox ~2 GB RAM: E2E workers=1.
-- No systemd in sandbox: `sudo service postgresql start` needed after sandbox restart.
-- Resend free 100/day < estimated notification bursts → mitigations designed (in-app first, queue spread, college SMTP fallback); still the top free-tier risk.
+- Sandbox quirk: TCP loopback Postgres SCRAM/MD5 auth broken (sandbox network layer) → local loopback set to `trust`; production will use real SCRAM on a real host. Documented for TROUBLESHOOTING.
+- npm audit: 6 vulns (5 moderate, 1 high) dominated by next→postcss ecosystem advisory (p0-npm-audit.txt). Re-check each release.
+- Sandbox ~2 GB RAM: E2E workers=1. No systemd: `sudo service postgresql start` after sandbox restart.
+- Resend free 100/day < notification burst estimates → mitigations designed (in-app first, queue spread, college SMTP fallback); top free-tier risk.
+- Drizzle migrator tracks applied migrations in schema `drizzle` (not public) — test setup drops both; deploy docs must note this for clean test databases.
 
 ## Test status
-- Unit 1/1 PASS · typecheck PASS · lint PASS · prod build PASS · E2E smoke 2/2 PASS (desktop+mobile).
-- Journey E2E, permission matrix, S1–S12 tests: not yet written (P3–P9 plan).
+- Unit 1/1 · Integration 10/10 · Lint 0/0 · Typecheck · Build · E2E smoke 2/2 (P0) — all PASS
+- S1–S12 security tests: NOT YET WRITTEN (P3, this increment)
 
-NEXT ACTION: P2 — Drizzle schema for users/sessions/tokens/teams/team_members/institutions/problems/proposals/proposal_versions/documents/notifications/announcements/evaluations/eval_scores/certificates/audit_log/settings/feature_flags + migrations via drizzle-kit, index on real query paths, FK/unique/check constraints, soft-delete columns where sensible; integration test boots the schema against csh2026_test; commit.
+NEXT ACTION: P3 — (1) write failing tests: permission matrix (route inventory walk fails without explicit policy), S2 doc ACL matrix, S4 evaluation transaction/double-submit, S5 conflict, S7 email-verify/reset/lockout, S8 spoofed X-Forwarded-For bypass, S9 CSRF/Origin; (2) implement: src/lib/auth (scrypt hash, tokens, sessions, lockout, can()), src/lib/rate-limit (trusted-proxy IP), src/lib/audit; (3) make tests pass; (4) commit + push.
