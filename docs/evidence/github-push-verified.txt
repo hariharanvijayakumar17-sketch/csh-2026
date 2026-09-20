@@ -1,0 +1,18 @@
+# GitHub push — verified 2026-09-20
+
+$ ssh -i /home/user/.ssh/id_ed25519 -T git@github.com
+"Hi hariharanvijayakumar17-sketch/csh-2026! You've successfully authenticated, but GitHub does not provide shell access." (exit 1 = normal for ssh -T)
+
+$ git ls-remote git@github.com:hariharanvijayakumar17-sketch/csh-2026.git
+ac1b3da8...  main   (remote contained ONE commit: 1-line README.md only — no existing project; from-scratch build continues, no mode switch)
+
+$ git remote add origin git@github.com:hariharanvijayakumar17-sketch/csh-2026.git && git fetch origin
+$ git merge origin/main --allow-unrelated-histories   -> add/add conflict in README.md (theirs = "# csh-2026"; ours = fuller README)
+Resolved keeping ours; merge committed.
+
+$ git push -u origin main
+   ac1b3da..e6a8434  main -> main
+branch 'main' set up to track 'origin/main'.
+PUSH_EXIT=0
+
+Post-push verification (next command): git ls-remote origin main must equal local HEAD.

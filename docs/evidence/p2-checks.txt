@@ -1,0 +1,13 @@
+# P2 checks (2026-09-20)
+
+lint: 0 errors, 0 warnings
+typecheck: exit 0
+unit (vitest, integration excluded): 1 file / 1 test PASS (smoke)
+integration (real Postgres 17, csh2026_test, committed migration drizzle/0000_init.sql):
+  10/10 PASS — case-insensitive email/team-name uniqueness, FK integrity, member uniqueness,
+  document owner check, append-only audit_log + status_histories (UPDATE/DELETE rejected by trigger),
+  FTS trigger + GIN search, round-criteria weight 0..100, score 0..100 + (evaluation,criterion) unique
+build: PASS
+
+Sandbox note: loopback PG auth set to trust (SCRAM/MD5 exchanges broken by sandbox network layer —
+documented in TROUBLESHOOTING when written). Production will use real SCRAM on real host.

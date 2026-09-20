@@ -12,7 +12,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-    exclude: ["**/node_modules/**", "**/e2e/**"],
+    // integration tests run against real Postgres via `npm run test:int`
+    exclude: ["**/node_modules/**", "**/e2e/**", "src/integration/**"],
     testTimeout: 30000,
   },
 });
