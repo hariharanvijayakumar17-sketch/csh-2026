@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import {
   documents,
@@ -122,7 +122,11 @@ async function ownTeamIds(userId: string): Promise<Set<string>> {
  * evaluator for the owning team. "Assigned evaluator" = has an evaluation row
  * for any proposal of that team (blind-mode hiding is a display concern, P7).
  */
-async function docCtx(caller: UserLike, doc: { ownerKind: "team" | "proposal"; ownerId: string; teamId: string | null }) {
+async function docCtx(
+  caller: UserLike,
+  doc: { ownerKind: "team" | "proposal"; ownerId: string; teamId: string | null },
+  purpose?: string
+) {
   if (!doc.teamId) throw new ApiError("NOT_FOUND", "Document's owning team not found");
   const own = await ownTeamIds(caller.id);
   const [teamRow] = await db
@@ -149,7 +153,7 @@ async function docCtx(caller: UserLike, doc: { ownerKind: "team" | "proposal"; o
     evaluatorAssignedTeamIds = new Set(rows.map((r) => r.teamId));
   }
   return {
-    document: { ownerKind: doc.ownerKind, ownerId: doc.ownerId, teamId: doc.teamId },
+    document: { ownerKind: doc.ownerKind, ownerId: doc.ownerId, teamId: doc.teamId, purpose },
     team: {
       id: teamRow.id,
       institutionId: teamRow.institutionId,
@@ -192,7 +196,7 @@ export async function resolveDocumentScope(
   const ownerKind = doc.ownerKind as "team" | "proposal";
   const teamId = (await resolveDocTeam(ownerKind, doc.ownerId)) ?? undefined;
   if (!teamId) throw new ApiError("NOT_FOUND", "Document's owning team not found");
-  return docCtx(caller, { ownerKind, ownerId: doc.ownerId, teamId });
+  return docCtx(caller, { ownerKind, ownerId: doc.ownerId, teamId }, doc.purpose as string | undefined);
 }
 
 export async function uploadDocument(
@@ -207,8 +211,19 @@ export async function uploadDocument(
   const teamId = await resolveDocTeam(input.ownerKind, input.ownerId);
   if (!teamId) throw new ApiError("NOT_FOUND", "Owning team/proposal not found");
 
-  const ctx = await docCtx(caller, { ownerKind: input.ownerKind, ownerId: input.ownerId, teamId });
-  if (!can(caller, Permissions.documentUpload, ctx)) {
+  if (!PURPOSES.has(input.purpose)) {
+    throw new ApiError("BAD_REQUEST", `Invalid document purpose (${input.purpose})`);
+  }
+
+  // F2: upload is a strict split — accepted team members, OR the SPOC of the
+  // team's institution for authorization letters ONLY. Mentors/evaluators
+  // cannot upload; other-institution SPOCs cannot upload.
+  const ctx = await docCtx(caller, { ownerKind: input.ownerKind, ownerId: input.ownerId, teamId }, input.purpose);
+  if (input.purpose === "authorization_letter") {
+    if (!can(caller, Permissions.documentUploadLetter, ctx)) {
+      throw new ApiError("FORBIDDEN", "Only the SPOC of the team's institution can upload the authorization letter");
+    }
+  } else if (!can(caller, Permissions.documentUpload, ctx)) {
     throw new ApiError("FORBIDDEN", "You cannot upload documents to this team/proposal");
   }
 
@@ -226,10 +241,6 @@ export async function uploadDocument(
   }
   if (!magicLooksLike(bytes, mime)) {
     throw new ApiError("BAD_REQUEST", "File content does not match its declared type");
-  }
-
-  if (!PURPOSES.has(input.purpose)) {
-    throw new ApiError("BAD_REQUEST", `Invalid document purpose (${input.purpose})`);
   }
 
   const sha256 = createHash("sha256").update(bytes).digest("hex");

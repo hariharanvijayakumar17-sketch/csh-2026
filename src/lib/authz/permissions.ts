@@ -22,7 +22,8 @@ export const Permissions = {
   teamDeclineInvite: "team.decline_invite", // invitee self; service validates pending row (F1)
   teamVerify: "team.verify", // SPOC own institution
   teamShortlist: "team.shortlist", // SPOC own institution
-  teamUploadDocument: "team.upload_document", // own team (or SPOC own inst, letter)
+  teamUploadDocument: "team.upload_document",
+  documentUploadLetter: "document.upload_letter", // F2: SPOC of the team's institution only // own team (or SPOC own inst, letter)
   // --- proposals ---------------------------------------------------------
   proposalCreate: "proposal.create",
   proposalView: "proposal.view",
@@ -105,7 +106,7 @@ export interface CanContext {
     leaderUserId: string;
   };
   proposal?: { teamId: string };
-  document?: { ownerKind: "team" | "proposal"; ownerId: string; teamId?: string };
+  document?: { ownerKind: "team" | "proposal"; ownerId: string; teamId?: string; purpose?: string };
   problem?: { creatorUserId?: string | null };
   evaluation?: {
     id: string;
@@ -227,8 +228,23 @@ export function can(
     // --- documents (S2) ---
     case Permissions.documentView:
       return isOwnTeamUploader(user, ctx);
-    case Permissions.documentUpload:
-      return isOwnTeamUploader(user, ctx);
+    case Permissions.documentUpload: {
+      // F2: uploads are strictly the ACCEPTED members of the owning team.
+      // SPOC authorization letters go through documentUploadLetter; mentors
+      // and evaluators are READ-ONLY on documents.
+      if (!ctx.document || user.role !== "participant") return false;
+      const teamId =
+        ctx.document.ownerKind === "team" ? ctx.document.ownerId : ctx.document.teamId;
+      if (!teamId) return false;
+      return ctx.ownTeamIds?.has(teamId) === true;
+    }
+    case Permissions.documentUploadLetter: {
+      // F2: institution SPOC, own-institution team, letter purpose.
+      // Fail-closed when the institution ids are missing.
+      if (user.role !== "spoc" || !user.institutionId) return false;
+      if (ctx.document?.purpose !== "authorization_letter") return false;
+      return ctx.team?.institutionId === user.institutionId;
+    }
 
     // --- problems ---
     case Permissions.problemCreate:

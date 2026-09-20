@@ -173,4 +173,26 @@ describe("P5 documents — S2 ACL matrix", () => {
       code: "FORBIDDEN",
     });
   });
+
+  it("F2: authorization letter is the SPOC's upload — own institution only, members/other SPOC denied", async () => {
+    const pdf = (tag: string) => Buffer.from(`%PDF-1.4 ${tag}`);
+    const file = (b: Buffer, name = "f.pdf") => ({ originalFilename: name, mime: "application/pdf", bytes: b });
+    // the SPOC of the team's institution CAN upload the letter
+    const letter = await uploadDocument(spocA, {
+      ownerKind: "team",
+      ownerId: teamA.id,
+      purpose: "authorization_letter",
+      file: file(pdf("letter")),
+    });
+    expect(letter.purpose).toBe("authorization_letter");
+    // SPOC of a DIFFERENT institution: denied
+    await expect(
+      uploadDocument(spocB, { ownerKind: "team", ownerId: teamA.id, purpose: "authorization_letter", file: file(pdf("b")) })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    // a team member uploading letter purpose: denied (letter is SPOC-only)
+    await expect(
+      uploadDocument(memberA, { ownerKind: "team", ownerId: teamA.id, purpose: "authorization_letter", file: file(pdf("m")) })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
 });

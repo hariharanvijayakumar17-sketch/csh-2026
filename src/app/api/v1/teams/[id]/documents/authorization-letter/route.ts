@@ -1,18 +1,21 @@
-import { z } from "@/lib/zod";
 import { makeRouteHandler } from "@/lib/http/request-context";
 import { ok } from "@/lib/http/error";
-import { resolveProposalScope } from "@/lib/proposals";
+import { resolveTeamScope } from "@/lib/teams";
 import { uploadDocument } from "@/lib/documents";
 
 export const runtime = "nodejs";
 
+/**
+ * F2: the SPOC of the team's institution uploads the authorization letter.
+ * Purpose is fixed by the URL — the purpose field in the body is ignored.
+ */
 export const POST = makeRouteHandler<{ id: string }>({
-  permission: "document.upload",
+  permission: "document.upload_letter",
   resolveCtx: (call, params) =>
-    resolveProposalScope(call.user!, params.id).then((ctx) => {
+    resolveTeamScope(call.user!, params.id).then((ctx) => {
       Object.assign(call.ctx, ctx);
       Object.assign(call.ctx, {
-        document: { ownerKind: "proposal", ownerId: params.id, teamId: call.ctx.team?.id ?? "" },
+        document: { ownerKind: "team", ownerId: params.id, teamId: params.id, purpose: "authorization_letter" },
       });
     }),
   handler: async (req, params, call) => {
@@ -24,22 +27,17 @@ export const POST = makeRouteHandler<{ id: string }>({
       );
     }
     const file = fd.get("file");
-    // F2: authorization_letter is team-level (SPOC letter route) — not a
-    // proposal document purpose; the enum rejects it with 400.
-    const purpose = z
-      .enum(["consent_form", "proposal_presentation", "project_report", "demo_video", "other"])
-      .safeParse(String(fd.get("purpose") ?? "other"));
-    if (!(file instanceof File) || !purpose.success) {
+    if (!(file instanceof File)) {
       return Response.json(
-        { success: false, error: { code: "BAD_REQUEST", message: "field 'file' (File) and 'purpose' required" }, requestId: call.requestId },
+        { success: false, error: { code: "BAD_REQUEST", message: "field 'file' (File) required" }, requestId: call.requestId },
         { status: 400 }
       );
     }
     const bytes = Buffer.from(await file.arrayBuffer());
     const doc = await uploadDocument(call.user!, {
-      ownerKind: "proposal",
+      ownerKind: "team",
       ownerId: params.id,
-      purpose: purpose.data,
+      purpose: "authorization_letter",
       file: { originalFilename: file.name, mime: file.type || "application/octet-stream", bytes },
     });
     return ok({ document: doc }, call.requestId, 201);

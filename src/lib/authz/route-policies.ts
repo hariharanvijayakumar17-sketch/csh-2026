@@ -110,7 +110,10 @@ export const ROUTE_POLICIES: Record<string, RouteEntry[]> = {
   ],
   "/api/v1/teams/:id/documents": [
     P(Permissions.documentView, "S2 matrix; lists team + team-proposal docs"),
-    POST(Permissions.teamUploadDocument, "own team or SPOC own inst (letter); S2/S10"),
+    POST(Permissions.documentUpload, "F2: accepted members of the team only (letter purpose -> 400, use letter route)"),
+  ],
+  "/api/v1/teams/:id/documents/authorization-letter": [
+    POST(Permissions.documentUploadLetter, "F2: SPOC of the team's institution; purpose fixed in URL"),
   ],
   "/api/v1/teams/:id/accept": [
     POST(Permissions.teamAcceptInvite, "F1: invited user accepts; service validates pending invite + same institution"),

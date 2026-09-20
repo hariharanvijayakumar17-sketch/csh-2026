@@ -47,6 +47,20 @@ export const POST = makeRouteHandler<{ id: string }>({
         { status: 400 }
       );
     }
+    if (purpose.data === "authorization_letter") {
+      // F2: the letter has a dedicated SPOC endpoint — keep the split visible
+      return Response.json(
+        {
+          success: false,
+          error: {
+            code: "BAD_REQUEST",
+            message: "authorization_letter is uploaded via POST /teams/:id/documents/authorization-letter (SPOC only)",
+          },
+          requestId: call.requestId,
+        },
+        { status: 400 }
+      );
+    }
     const bytes = Buffer.from(await file.arrayBuffer());
     const doc = await uploadDocument(call.user!, {
       ownerKind: "team",

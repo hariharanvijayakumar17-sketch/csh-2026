@@ -193,6 +193,47 @@ describe("S1 central authorisation: can(user, permission, ctx)", () => {
     expect(can(member, Permissions.documentView, foreignForSpocA)).toBe(false);
   });
 
+  it("F2: upload is members-only; the SPOC letter is a separate institution-scoped permission", () => {
+    const docTeam: CanContext = {
+      team: teamA,
+      document: { ownerKind: "team", ownerId: "t-a", teamId: "t-a" },
+      ownTeamIds: new Set(["t-a"]),
+      mentorAssignedTeamIds: new Set(["t-a"]),
+      evaluatorAssignedTeamIds: new Set(["t-a"]),
+    };
+    // read-only roles cannot upload, even when assigned
+    expect(can(mentor, Permissions.documentUpload, docTeam)).toBe(false);
+    expect(can(evaluator, Permissions.documentUpload, docTeam)).toBe(false);
+    // cross-team member cannot upload
+    const foreignForMember: CanContext = {
+      team: teamB,
+      document: { ownerKind: "team", ownerId: "t-b", teamId: "t-b" },
+      ownTeamIds: new Set(["t-a"]),
+    };
+    expect(can(member, Permissions.documentUpload, foreignForMember)).toBe(false);
+    // letter: only the SPOC of the TEAM's institution, letter purpose, fail-closed
+    const letterCtx: CanContext = {
+      team: teamA,
+      document: { ownerKind: "team", ownerId: "t-a", teamId: "t-a", purpose: "authorization_letter" },
+      ownTeamIds: new Set<string>(),
+    };
+    expect(can(spocA, Permissions.documentUploadLetter, letterCtx)).toBe(true);
+    expect(can(spocB, Permissions.documentUploadLetter, letterCtx)).toBe(false);
+    expect(can(leader, Permissions.documentUploadLetter, letterCtx)).toBe(false);
+    // non-letter purpose: the letter permission never grants
+    const nonLetter: CanContext = {
+      ...letterCtx,
+      document: { ...letterCtx.document!, purpose: "consent_form" },
+    };
+    expect(can(spocA, Permissions.documentUploadLetter, nonLetter)).toBe(false);
+    // SPOC without institution: fail-closed
+    const spocNoInst: UserLike = { id: "u-spoc-none", role: "spoc", institutionId: null };
+    expect(can(spocNoInst, Permissions.documentUploadLetter, letterCtx)).toBe(false);
+    // (members uploading letter-purpose docs are blocked in the SERVICE:
+    //  letter purpose routes through documentUploadLetter only — integration
+    //  documents.test.ts covers it)
+  });
+
   it("problem creator: draft/edit own PS before approval; approve/publish admin-only", () => {
     const mine = { problem: { creatorUserId: "u-creator" } };
     const other = { problem: { creatorUserId: "u-creator-2" } };
