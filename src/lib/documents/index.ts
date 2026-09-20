@@ -15,6 +15,7 @@ import {
 import { can, Permissions, type CanContext, type UserLike } from "../authz/permissions";
 import { getNumberSetting } from "../settings";
 import { ApiError } from "../http/error";
+import { detectContent } from "./content-detect";
 
 /**
  * P5: documents — S2 document ACL. Access is resolved exclusively through
@@ -53,37 +54,9 @@ const PURPOSES = new Set([
 
 const UPLOAD_ROOT = path.resolve(process.env.CSH_UPLOAD_DIR ?? "data/uploads");
 
-const ALLOWED_MIME = new Set([
-  "application/pdf",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation", // pptx
-  "application/vnd.ms-powerpoint", // ppt
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // docx
-  "application/msword", // doc
-  "video/mp4",
-  "application/zip",
-  "image/jpeg",
-  "image/png",
-]);
-
-function magicLooksLike(buf: Buffer, mime: string): boolean {
-  if (buf.length < 4) return false;
-  switch (mime) {
-    case "application/pdf":
-      return buf.subarray(0, 4).equals(Buffer.from("%PDF"));
-    case "application/zip":
-      return buf[0] === 0x50 && buf[1] === 0x4b;
-    case "video/mp4": {
-      const ftyp = buf.subarray(4, 8).toString("latin1");
-      return ftyp === "ftyp";
-    }
-    case "image/jpeg":
-      return buf[0] === 0xff && buf[1] === 0xd8;
-    case "image/png":
-      return buf.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
-    default:
-      return true; // office formats: magic sniff skipped (validated by allowlist + size)
-  }
-}
+// F3: supported types are decided by SERVER-SIDE content detection
+// (detectContent), never by the client-declared mime. Legacy binary office
+// formats (.doc/.ppt) are simply "unknown" content → rejected.
 
 /** teamId a document resolves to (team-owned directly, proposal-owned via team). */
 async function resolveDocTeam(ownerKind: "team" | "proposal", ownerId: string): Promise<string | null> {
@@ -227,20 +200,20 @@ export async function uploadDocument(
     throw new ApiError("FORBIDDEN", "You cannot upload documents to this team/proposal");
   }
 
-  const { originalFilename, mime, bytes } = input.file;
+  const { originalFilename, bytes } = input.file; // F3: `mime` (client claim) intentionally ignored
   if (!originalFilename || originalFilename.length > 255) {
     throw new ApiError("BAD_REQUEST", "Invalid filename");
-  }
-  if (!ALLOWED_MIME.has(mime)) {
-    throw new ApiError("BAD_REQUEST", `File type not allowed (${mime})`);
   }
   const maxBytes = await getNumberSetting("document.max_bytes", 10 * 1024 * 1024);
   if (bytes.length === 0) throw new ApiError("BAD_REQUEST", "Empty file");
   if (bytes.length > maxBytes) {
     throw new ApiError("PAYLOAD_TOO_LARGE", `File exceeds ${Math.round(maxBytes / (1024 * 1024))} MiB limit`);
   }
-  if (!magicLooksLike(bytes, mime)) {
-    throw new ApiError("BAD_REQUEST", "File content does not match its declared type");
+  // F3: the bytes decide what the file is — the client-declared mime is never
+  // trusted. Undetectable content and corrupt zips are rejected.
+  const detected = detectContent(bytes);
+  if (!detected.mime) {
+    throw new ApiError("BAD_REQUEST", "Could not detect a supported file type from the file content");
   }
 
   const sha256 = createHash("sha256").update(bytes).digest("hex");
@@ -257,7 +230,7 @@ export async function uploadDocument(
       purpose: input.purpose as never, // validated against PURPOSES above
       originalFilename,
       storedFilename,
-      mimeDetected: mime,
+      mimeDetected: detected.mime, // F3: server's verdict, not the client claim
       sizeBytes: bytes.length,
       sha256,
       storageKey: path.join(UPLOAD_ROOT, storedFilename),

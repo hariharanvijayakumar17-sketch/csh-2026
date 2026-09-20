@@ -1,5 +1,6 @@
 import { makeRouteHandler } from "@/lib/http/request-context";
 import { getDocument, resolveDocumentScope } from "@/lib/documents";
+import { contentDisposition } from "@/lib/documents/content-detect";
 
 export const runtime = "nodejs";
 
@@ -14,7 +15,8 @@ export const GET = makeRouteHandler<{ id: string }>({
       headers: {
         "content-type": doc.mimeDetected,
         "content-length": String(bytes.length),
-        "content-disposition": `attachment; filename="${encodeURIComponent(doc.originalFilename)}"`,
+        // F3: RFC 5987 — UTF-8 name in filename*, ASCII fallback in filename
+        "content-disposition": contentDisposition(doc.originalFilename),
         "x-request-id": call.requestId,
       },
     });

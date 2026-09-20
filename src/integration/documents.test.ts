@@ -155,12 +155,14 @@ describe("P5 documents — S2 ACL matrix", () => {
     await expect(
       uploadDocument(leaderA, { ownerKind: "team", ownerId: teamA.id, purpose: "other", file: big })
     ).rejects.toMatchObject({ code: "PAYLOAD_TOO_LARGE" });
+    // F3: detection is the gate — real executable bytes (MZ/PE) are unknown
+    // content → rejected, whatever the declared mime says
     await expect(
       uploadDocument(leaderA, {
         ownerKind: "team",
         ownerId: teamA.id,
         purpose: "other",
-        file: sampleFile("evil.exe", "application/x-msdownload"),
+        file: { originalFilename: "evil.exe", mime: "application/x-msdownload", bytes: Buffer.concat([Buffer.from([0x4d, 0x5a, 0x90, 0x00]), Buffer.alloc(32, 7)]) },
       })
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
@@ -193,6 +195,98 @@ describe("P5 documents — S2 ACL matrix", () => {
     await expect(
       uploadDocument(memberA, { ownerKind: "team", ownerId: teamA.id, purpose: "authorization_letter", file: file(pdf("m")) })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+
+  it("F3: content is detected server-side — real docx accepted (mimeDetected = docx), fake docx + legacy .doc rejected", async () => {
+    const pdf = (tag: string) => Buffer.from(`%PDF-1.4 ${tag}`);
+    // minimal valid OOXML docx (store-method zip with central directory)
+    const crcTable = (() => {
+      const t = new Uint32Array(256);
+      for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+        t[n] = c >>> 0;
+      }
+      return t;
+    })();
+    const crc32 = (b: Buffer) => {
+      let c = 0xffffffff;
+      for (let i = 0; i < b.length; i++) c = crcTable[(c ^ b[i]) & 0xff] ^ (c >>> 8);
+      return (c ^ 0xffffffff) >>> 0;
+    };
+    const zip = (entries: Record<string, string>) => {
+      const locals: Buffer[] = [];
+      const centrals: Buffer[] = [];
+      let offset = 0;
+      for (const [name, content] of Object.entries(entries)) {
+        const nb = Buffer.from(name, "utf8");
+        const data = Buffer.from(content, "utf8");
+        const crc = crc32(data);
+        const lh = Buffer.alloc(30);
+        lh.writeUInt32LE(0x04034b50, 0);
+        lh.writeUInt16LE(20, 4);
+        lh.writeUInt32LE(crc, 14);
+        lh.writeUInt32LE(data.length, 18);
+        lh.writeUInt32LE(data.length, 22);
+        lh.writeUInt16LE(nb.length, 26);
+        locals.push(Buffer.concat([lh, nb, data]));
+        const ch = Buffer.alloc(46);
+        ch.writeUInt32LE(0x02014b50, 0);
+        ch.writeUInt16LE(20, 4);
+        ch.writeUInt16LE(20, 6);
+        ch.writeUInt32LE(crc, 16);
+        ch.writeUInt32LE(data.length, 20);
+        ch.writeUInt32LE(data.length, 24);
+        ch.writeUInt16LE(nb.length, 28);
+        ch.writeUInt32LE(offset, 42);
+        centrals.push(Buffer.concat([ch, nb]));
+        offset += 30 + nb.length + data.length;
+      }
+      const cd = Buffer.concat(centrals);
+      const eo = Buffer.alloc(22);
+      eo.writeUInt32LE(0x06054b50, 0);
+      eo.writeUInt16LE(Object.keys(entries).length, 8);
+      eo.writeUInt16LE(Object.keys(entries).length, 10);
+      eo.writeUInt32LE(cd.length, 12);
+      eo.writeUInt32LE(offset, 16);
+      return Buffer.concat([...locals, cd, eo]);
+    };
+    const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    // 1) a REAL docx, even with a lie in the declared mime, is stored as docx
+    const real = await uploadDocument(leaderA, {
+      ownerKind: "team",
+      ownerId: teamA.id,
+      purpose: "project_report",
+      file: { originalFilename: "r.docx", mime: "text/plain", bytes: zip({ "[Content_Types].xml": "<T/>", "word/document.xml": "<d/>" }) },
+    });
+    expect(real.mimeDetected).toBe(DOCX_MIME);
+    // 2) a file DECLARED as docx but actually html: rejected (probe C)
+    await expect(
+      uploadDocument(leaderA, {
+        ownerKind: "team",
+        ownerId: teamA.id,
+        purpose: "project_report",
+        file: { originalFilename: "x.docx", mime: DOCX_MIME, bytes: Buffer.from("<html><script>alert(1)</script>") },
+      })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    // 3) legacy .doc: not a supported type
+    await expect(
+      uploadDocument(leaderA, {
+        ownerKind: "team",
+        ownerId: teamA.id,
+        purpose: "project_report",
+        file: { originalFilename: "old.doc", mime: "application/msword", bytes: Buffer.from("\xd0\xcf\x11\xe0") },
+      })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    // 4) pdf declared as zip is still detected+stored as pdf
+    const lie = await uploadDocument(leaderA, {
+      ownerKind: "team",
+      ownerId: teamA.id,
+      purpose: "other",
+      file: { originalFilename: "lie.zip", mime: "application/zip", bytes: pdf("lie") },
+    });
+    expect(lie.mimeDetected).toBe("application/pdf");
   });
 
 });
