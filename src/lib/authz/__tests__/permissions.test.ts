@@ -193,6 +193,31 @@ describe("S1 central authorisation: can(user, permission, ctx)", () => {
     expect(can(member, Permissions.documentView, foreignForSpocA)).toBe(false);
   });
 
+  it("F7: SPOC portal permissions are fail-closed; announcementUpdate = creator or own-inst SPOC", () => {
+    // fail-open probe: missing ctx.institutionId must DENY (not grant)
+    expect(can(spocA, Permissions.spocViewTeams, {})).toBe(false);
+    expect(can(spocA, Permissions.spocExport, {})).toBe(false);
+    expect(can(spocA, Permissions.spocAnalytics, {})).toBe(false);
+    // SPOC without an institution: never
+    const spocNone: UserLike = { id: "u-spoc-none", role: "spoc", institutionId: null };
+    expect(can(spocNone, Permissions.spocViewTeams, { institutionId: INST_A })).toBe(false);
+    // announcementUpdate: the creator
+    const ann = { audience: "all", createdById: creator.id, status: "published", institutionId: INST_A };
+    expect(can(creator, Permissions.announcementUpdate, { announcement: ann })).toBe(true);
+    // own-institution SPOC
+    expect(can(spocA, Permissions.announcementUpdate, { announcement: ann })).toBe(true);
+    // other-institution SPOC: denied
+    expect(can(spocB, Permissions.announcementUpdate, { announcement: ann })).toBe(false);
+    // problem_creator (not the author): denied
+    const other: UserLike = { id: "u-creator-2", role: "problem_creator" };
+    expect(can(other, Permissions.announcementUpdate, { announcement: ann })).toBe(false);
+    // SPOC with null institution: denied even if audience matches
+    const spocNone2: UserLike = { id: "u-spoc-none2", role: "spoc", institutionId: null };
+    expect(can(spocNone2, Permissions.announcementUpdate, { announcement: ann })).toBe(false);
+    // missing announcement ctx: fail closed
+    expect(can(spocA, Permissions.announcementUpdate, {})).toBe(false);
+  });
+
   it("F5: proposalReview — problem creator of THIS proposal's PS, or own-institution SPOC only", () => {
     const teamAProposal = { teamId: "t-a", problemId: "ps-1", creatorUserId: "u-creator" };
     expect(can(creator, Permissions.proposalReview, { team: teamA, proposal: teamAProposal })).toBe(true);

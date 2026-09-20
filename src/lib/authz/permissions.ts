@@ -117,7 +117,7 @@ export interface CanContext {
     status: "assigned" | "in_progress" | "submitted" | "locked" | "reopened";
   };
   institutionId?: string; // for institution-scoped resources
-  announcement?: { audience: string; createdById: string; status: string };
+  announcement?: { audience: string; createdById: string; status: string; institutionId?: string | null };
   /** Runtime-resolved assignment sets (filled by the service layer). */
   ownTeamIds?: Set<string>; // teams the user belongs to
   mentorAssignedTeamIds?: Set<string>;
@@ -321,10 +321,13 @@ export function can(
     case Permissions.spocAnalytics:
     case Permissions.spocExport:
     case Permissions.spocImport:
+      // F7: fail-closed — a missing ctx.institutionId or missing user
+      // institution DENIES (the old `undefined ||` granted access)
       return (
         user.role === "spoc" &&
-        (ctx.institutionId === undefined ||
-          ctx.institutionId === user.institutionId)
+        !!user.institutionId &&
+        ctx.institutionId !== undefined &&
+        ctx.institutionId === user.institutionId
       );
 
     // --- mentor (assigned teams only) ---
@@ -342,13 +345,21 @@ export function can(
     // --- announcements ---
     case Permissions.announcementCreate:
       return user.role === "spoc" || user.role === "problem_creator";
-    case Permissions.announcementUpdate:
-      return (
-        !!ctx.announcement &&
-        (user.id === ctx.announcement.createdById ||
-          user.role === "spoc" ||
-          user.role === "problem_creator")
-      );
+    case Permissions.announcementUpdate: {
+      if (!ctx.announcement) return false;
+      // the author
+      if (user.id === ctx.announcement.createdById) return true;
+      // F7: SPOC of the announcement's OWN institution only (fail-closed);
+      // problem_creators no longer update announcements
+      if (user.role === "spoc") {
+        return (
+          !!user.institutionId &&
+          ctx.announcement.institutionId != null &&
+          ctx.announcement.institutionId === user.institutionId
+        );
+      }
+      return false;
+    }
 
     // --- admin settings ---
     case Permissions.settingsWrite:
