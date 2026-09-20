@@ -18,7 +18,13 @@ Format: date | decision | alternatives | rejected because | reason + evidence.
 - Rejected: native deps complicate builds/CI; pbkdf2 has weaker per-core throughput.
 - Reason: zero extra dependencies, standard library, adequate with per-user random salt + iteration count; will be covered by unit test. Status: DECISION.
 
-## D4 — 2026-09-20 — Production hosting: TBD at human gate (user's accounts required)
+## D4 — 2026-09-20 — Production hosting: RESOLVED (primary + fallback chosen; accounts still need the human gate)
+- **Primary:** single always-on India-region VM — Oracle Cloud Always Free (Chennai region) OR college IT server, whichever the gate provides first. Limits OBSERVED on provider pages 2026-09-20 (see PROVIDER_RESEARCH.md §1, §9).
+- **Fallback:** Cloudflare Workers + D1 + R2 (adapter work ≈1 day). **Staging/preview:** Vercel Hobby (rejected for production: "personal project" positioning, 1M req/month, no durable workers) and Render/Railway/Neon free tiers rejected for sleeping/pausing/30-day expiry (all observed, cited in PROVIDER_RESEARCH.md).
+- Storage: MinIO on VM (S3-compatible) + R2 10 GB free for backups/overflow. Email: Resend free (3,000/mo, 100/day — burst cap is a known gap with queue mitigations + college SMTP fallback). Cron: systemd timers.
+- Alternatives considered + rejected: Vercel+Neon (sleeps, hobby non-commercial), Render free (15-min spin-down, free PG expires 30 days), Railway (trial-then-$1/mo), Supabase free (pause behaviour UNVERIFIED; not used), Cloudflare-only primary (D1=SQLite, 10 ms CPU/req, 100k writes/day).
+- Evidence: PROVIDER_RESEARCH.md (all first-party pages fetched 2026-09-20). Human gate: OCI account (card question) and/or college IT server + domain + SMTP — consolidated at P13.
+- (Original TBD text retained below for history.)
 - Constraint set (from brief): Rs 0 recurring, no sleeping on deadline days, S3-compatible storage, India latency, 500 concurrent users, 1-student ops.
 - Candidates to verify at P1 (provider pricing/terms pages, marked OBSERVED/UNVERIFIED): Vercel (hobby non-commercial + sleeps → likely rejected for prod event day), Railway/Render (paid tiers), Oracle Cloud Always Free VM (verify current terms; possible card requirement), Hetzner (cheap but not Rs 0), Cloudflare Workers+D1/R2 (verify limits), Fly.io (verify free tier existence), college-hosted VPS (likely best: institutional, local latency, near-Rs 0 via college IT).
 - Status: OPEN — will be resolved at the Phase A (research) step and requires a human gate (account creation). Cheapest upgrade path will be recorded per service.
